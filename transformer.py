@@ -956,3 +956,4 @@ elif tool == "Earthing (IEEE 80)":
             st.latex(r"E_{step50}  = (1000 + 6\,C_s\rho_s)\frac{0.116}{\sqrt{t_s}}")
             st.markdown("**Mesh & Step Voltages (Eq. 80-94):**")
             st.latex(r"E_m = \frac{\rho \cdot I_G \cdot K_m \cdot K_i}{L_m}\;;\quad E_s = \frac{\rho \cdot I_G \cdot K_s \cdot K_i}{L_s}")
+            st.latex(r"E_m = \frac{\rho \cdot I_G \cdot K_m \cdot K_i}{L_m}\;;\quad E_s = \frac{\rho \cdot I_G \cdot K_s \cdot K_i}{L_s}")
