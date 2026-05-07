@@ -1,91 +1,10 @@
-import streamlit as st
+from nicegui import ui
 import numpy as np
 import plotly.graph_objects as go
 import pandas as pd
 import math
 
-# ABB Style Configuration
-st.set_page_config(page_title="Engineering Tool", page_icon="⚡", layout="wide")
-
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-    
-    .stApp {
-        background-color: #FFFFFF;
-    }
-    
-    /* Red Accent Header */
-    .abb-header {
-        background-color: #FF0000;
-        height: 4px;
-        width: 100%;
-        position: fixed;
-        top: 0;
-        left: 0;
-        z-index: 1000;
-    }
-    
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #F2F2F2 !important;
-        border-right: 1px solid #E6E6E6;
-    }
-    
-    /* Button Styling */
-    .stButton>button {
-        border-radius: 2px !important;
-        border: 1px solid #333333 !important;
-        color: #333333 !important;
-        font-weight: 600 !important;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        padding: 0.5rem 1rem;
-        transition: all 0.2s;
-    }
-    
-    .stButton>button:hover {
-        border-color: #FF0000 !important;
-        color: #FF0000 !important;
-        background-color: rgba(255, 0, 0, 0.05) !important;
-    }
-    
-    /* Primary Action Button (ABB Style) */
-    div[data-testid="stFormSubmitButton"] button, 
-    button[kind="primary"] {
-        background-color: #FF0000 !important;
-        color: white !important;
-        border: none !important;
-    }
-    
-    div[data-testid="stFormSubmitButton"] button:hover,
-    button[kind="primary"]:hover {
-        background-color: #CC0000 !important;
-        color: white !important;
-    }
-    
-    /* Card/Expander Styling */
-    .streamlit-expanderHeader {
-        background-color: #FFFFFF !important;
-        border-top: 1px solid #EEEEEE !important;
-        border-bottom: 1px solid #EEEEEE !important;
-        font-size: 1.1rem !important;
-    }
-    
-    /* Metrics */
-    [data-testid="stMetricValue"] {
-        color: #FF0000 !important;
-    }
-</style>
-<div class="abb-header"></div>
-""", unsafe_allow_html=True)
-import plotly.graph_objects as go
-import pandas as pd
-
+# --- Constants & Data ---
 CURVES = {
     "IEC Normal Inverse": {"A": 0.14, "B": 0.0, "c": 0.02},
     "IEC Very Inverse": {"A": 13.5, "B": 0.0, "c": 1.0},
@@ -98,9 +17,9 @@ CURVES = {
 
 CABLE_DATA = {
     "Cu": {
-        "rho": 0.0175,  # Ohm*mm^2/m
-        "reactance": 0.08, # Ohm/km
-        "iz": { # Section: Permissible current (A) in air
+        "rho": 0.0175,
+        "reactance": 0.08,
+        "iz": {
             1.5: 14.5, 2.5: 20, 4: 26, 6: 34, 10: 46, 16: 62, 25: 80, 35: 99, 
             50: 118, 70: 149, 95: 179, 120: 206, 150: 235, 185: 268, 240: 313
         }
@@ -115,847 +34,958 @@ CABLE_DATA = {
     }
 }
 
-if 'current_tool' not in st.session_state:
-    st.session_state.current_tool = "МТЗ Трансформатора (ANSI 51)"
+# --- Styling ---
+ui.add_head_html("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+    .abb-header { background-color: #FF0000; height: 4px; width: 100%; position: fixed; top: 0; left: 0; z-index: 1000; }
+    .nav-button { justify-content: flex-start; text-align: left; width: 100%; letter-spacing: 0.3px; font-weight: 500; height: 44px; border-radius: 8px; margin-bottom: 4px; text-transform: none !important; }
+    .nav-button-active { background-color: rgba(255, 0, 0, 0.05) !important; color: #FF0000 !important; font-weight: 700; }
+    .nav-label { font-size: 0.85rem; }
+    .nav-standard { font-size: 0.7rem; font-weight: 700; opacity: 0.6; }
+    .result-card { border-left: 4px solid #FF0000; background-color: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .input-sidebar { background-color: #f8fafc; border-right: 1px solid #e2e8f0; }
+    .metric-value { color: #FF0000; font-size: 1.5rem; font-weight: bold; }
 
-if 'calc_triggered' not in st.session_state:
-    st.session_state.calc_triggered = False
+    /* Math rendering - pure CSS, no external libraries */
+    .formula-block {
+        background: white;
+        border-left: 4px solid #dde3ed;
+        border-radius: 4px;
+        padding: 1.1rem 2rem;
+        margin: 0.3rem 0 1rem 0;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        overflow-x: auto;
+    }
+    .math-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.3em;
+        font-family: 'Lora', 'Georgia', 'Times New Roman', serif;
+        font-size: 1.18em;
+        color: #1e293b;
+        line-height: 2.5;
+    }
+    .math-eq { color: #64748b; margin: 0 0.15em; }
+    .math-result { color: #DC2626; font-weight: 700; font-size: 1.05em; }
+    .math-unit { font-family: 'Inter', sans-serif; font-style: normal; font-size: 0.88em; color: #475569; margin-left: 0.1em; }
+    .mfrac {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        vertical-align: middle;
+        margin: 0 0.2em;
+        line-height: 1.2;
+    }
+    .mnum { border-bottom: 1.5px solid #1e293b; padding: 0.05em 0.35em; text-align: center; font-size: 0.9em; }
+    .mden { padding: 0.05em 0.35em; text-align: center; font-size: 0.9em; }
+    .step-label {
+        font-weight: 700;
+        color: #334155;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        margin-bottom: 0.25rem;
+    }
+</style>
+<div class="abb-header"></div>
+""")
 
+# --- State Management ---
+class AppState:
+    def __init__(self):
+        self.current_tool = "transformer"
+
+        self.calc_triggered = False
+        
+        # Transformer Inputs
+        self.t_s_nom = 1000
+        self.t_u_nom = 10.5
+        self.t_ct_primary = 100
+        self.t_ct_secondary = 5
+        self.t_k_ots = 1.2
+        self.t_k_szp = 1.3
+        self.t_k_v = 0.95
+        self.t_k_per = 1.4
+        self.t_i_kz_min = 800.0
+        self.t_curve_type = "IEC Normal Inverse"
+        self.t_i_sc = 2000.0
+        self.t_t_op = 0.5
+        self.t_manual_start = False
+        self.t_manual_val = 1.0
+
+        # Generator Inputs
+        self.g_i_nom_g = 2000.0
+        self.g_k_ots_g = 1.2
+        self.g_k_v_g = 0.935
+        self.g_i_max_mtz_ol = 1500.0
+        self.g_k_tt = 400.0
+        self.g_i_kz_min_g = 5000.0
+        self.g_curve_type_g = "IEC Extremely Inverse"
+        self.g_t_mtz_ol = 0.5
+        self.g_delta_t = 0.3
+
+        # Selectivity Inputs
+        self.s_ds_name = "Q1 (Feeder)"
+        self.s_ds_curve = "IEC Normal Inverse"
+        self.s_ds_pickup = 200.0
+        self.s_ds_tms = 0.1
+        self.s_us_name = "Q0 (Main)"
+        self.s_us_curve = "IEC Very Inverse"
+        self.s_us_pickup = 400.0
+        self.s_us_tms = 0.2
+        self.s_i_min_fault = 600.0
+        self.s_i_max_fault = 5000.0
+        self.s_delta_t_req = 0.3
+
+        # Cable Inputs
+        self.c_p_load = 50.0
+        self.c_u_nom = 400
+        self.c_cos_phi = 0.85
+        self.c_length = 100.0
+        self.c_material = "Cu"
+        self.c_du_max = 5.0
+
+        # SC Generator Inputs
+        self.sc_s_n = 100.0
+        self.sc_u_rG = 11.0
+        self.sc_cos_phi_G = 0.85
+        self.sc_x_d_pu = 0.14
+        self.sc_r_a_pu = 0.003
+        self.sc_u_n = 11.0
+        self.sc_freq = 50
+        self.sc_c_max = 1.10
+        self.sc_fault_loc = ["Generator Terminals (LV Bus)"]
+        self.sc_fault_types = ["3-phase (I\"k3)", "2-phase (I\"k2)"]
+        self.sc_t_k = 1.0
+        # Transformer
+        self.sc_s_T = 100.0
+        self.sc_u_T_lv = 11.0
+        self.sc_u_T_hv = 110.0
+        self.sc_u_k_pct = 10.0
+        self.sc_p_k_kw = 200.0
+
+        # Earthing Inputs
+        self.e_u_sys = 110.0
+        self.e_if_sym = 10000.0
+        self.e_tf = 0.5
+        self.e_xr = 10.0
+        self.e_sf = 0.6
+        self.e_rho = 100.0
+        self.e_rho_s = 2500.0
+        self.e_hs = 0.1
+        self.e_h = 0.5
+        self.e_a = 3600.0
+        self.e_lx = 60.0
+        self.e_ly = 60.0
+        self.e_lc = 600.0
+        self.e_lr = 0.0
+        self.e_nx = 7
+        self.e_ny = 7
+        self.e_d_cond = 0.01
+        self.e_body_weight = 50
+        self.e_ts = 0.5
+        self.e_cond_mat = "Copper (soft-drawn)"
+
+        # Incomer Inputs (ANSI 67)
+        self.inc_i_rab_own_max = 320.0
+        self.inc_i_rab_neighbor_max = 320.0
+        self.inc_i_sz_sv = 1200.0
+        self.inc_t_sz_sv = 0.5
+        self.inc_i_k_min = 2000.0
+        self.inc_k_szp = 2.8
+        self.inc_k_ots = 1.2
+        self.inc_k_v = 0.935
+        self.inc_k_otv = 1.5
+        self.inc_k_tok = 1.0
+        self.inc_delta_t = 0.3
+
+state = AppState()
+
+# --- Utility Functions ---
 def reset_calc():
-    st.session_state.calc_triggered = False
+    state.calc_triggered = False
+    content.refresh()
 
-st.markdown("<h3 style='text-align: center; color: #333333; margin-bottom: 25px;'>ENGINEERING TOOL</h3>", unsafe_allow_html=True)
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-if col1.button("TRANSFORMER PROTECTION (ANSI 51)", use_container_width=True):
-    st.session_state.current_tool = "МТЗ Трансформатора (ANSI 51)"
-    reset_calc()
-if col2.button("GENERATOR PROTECTION (ANSI 67)", use_container_width=True):
-    st.session_state.current_tool = "МТЗ Генератора (ANSI 67)"
-    reset_calc()
-if col3.button("📊 SELECTIVITY", use_container_width=True):
-    st.session_state.current_tool = "Проверка селективности"
-    reset_calc()
-if col4.button("🔌 CABLE", use_container_width=True):
-    st.session_state.current_tool = "Выбор сечения кабеля"
-    reset_calc()
-if col5.button("⚡ SC GENERATOR (IEC 60909)", use_container_width=True):
-    st.session_state.current_tool = "SC Generator (IEC 60909)"
-    reset_calc()
-if col6.button("🌍 EARTHING (IEEE 80)", use_container_width=True):
-    st.session_state.current_tool = "Earthing (IEEE 80)"
-    reset_calc()
+def trigger_calc():
+    state.calc_triggered = True
+    content.refresh()
 
-st.markdown("---")
-tool = st.session_state.current_tool
+def frac(num, den):
+    """HTML fraction using CSS flex — renders identically to LaTeX fractions."""
+    return f'<span class="mfrac"><span class="mnum">{num}</span><span class="mden">{den}</span></span>'
 
-if tool == "МТЗ Трансформатора (ANSI 51)":
-    st.title("⚡ Расчет уставок защиты трансформатора")
-    
-    # Боковая панель - Исходные данные
-    st.sidebar.header("Исходные данные трансформатора")
-    s_nom = st.sidebar.number_input("Мощность трансформатора (кВА)", value=1000)
-    u_nom = st.sidebar.number_input("Напряжение ВН (кВ)", value=10.5)
-    
-    st.sidebar.header("Параметры ТТ (Трансформатора тока)")
-    ct_primary = st.sidebar.number_input("Первичный ток ТТ (А)", value=100)
-    ct_secondary = st.sidebar.selectbox("Вторичный ток ТТ (А)", [5, 1])
-    
-    st.sidebar.header("Коэффициенты для МТЗ (ANSI 51)")
-    k_ots = st.sidebar.number_input("Коэффициент отстройки (Kотс)", value=1.2, step=0.1)
-    k_szp = st.sidebar.number_input("Коэффициент самозапуска (Kсзп)", value=1.3, step=0.1)
-    k_v = st.sidebar.number_input("Коэффициент возврата (Kв)", value=0.95, step=0.01)
-    k_per = st.sidebar.number_input("Коэффициент перегрузки (Kпер)", value=1.4, step=0.1)
-    
-    st.sidebar.header("Проверка чувствительности")
-    i_kz_min = st.sidebar.number_input("Мин. ток КЗ (I^{(2)}_{КЗ.мин}, А)", value=800.0, step=50.0)
-    
-    st.sidebar.header("Параметры для расчета TMS (Выдержка времени)")
-    curve_type = st.sidebar.selectbox("Тип характеристики", list(CURVES.keys()))
-    i_sc = st.sidebar.number_input("Ток КЗ для согласования (I_sc, А)", value=2000.0, step=100.0)
-    t_op = st.sidebar.number_input("Требуемое время срабатывания (t_op, с)", value=0.5, step=0.1)
-    
-    # Расчет
-    i_nom = s_nom / (1.732 * u_nom)
-    i_rab_max = i_nom * k_per
-    i_szp = (k_ots * k_szp / k_v) * i_rab_max
-    set_value = i_szp / ct_primary
-    
-    st.sidebar.header("Ручная корректировка уставки")
-    manual_start_value = st.sidebar.checkbox("Изменить Start value вручную", value=False)
-    if manual_start_value:
-        final_set_value = st.sidebar.number_input("Пользовательское значение Start value (x I_n)", value=float(set_value), step=0.01)
-        i_pickup_actual = final_set_value * ct_primary
-    else:
-        final_set_value = set_value
-        i_pickup_actual = i_szp
-    
-    k_s = i_kz_min / i_pickup_actual
-    
-    if i_sc > i_pickup_actual:
-        A_const = CURVES[curve_type]["A"]
-        B_const = CURVES[curve_type]["B"]
-        c_const = CURVES[curve_type]["c"]
-        i_rel = i_sc / i_pickup_actual
-        denominator = (A_const / ((i_rel ** c_const) - 1)) + B_const
-        tms_calc = t_op / denominator
-    else:
-        tms_calc = None
-    
-    # Кнопка запуска расчета
-    if st.button("🚀 Выполнить расчет", type="primary", use_container_width=True):
-        st.session_state.calc_triggered = True
+def math_step(label, lhs, rhs, result, unit=""):
+    """Render a labeled calculation step as: LHS = RHS = RESULT unit (pure HTML/CSS)."""
+    with ui.column().classes('w-full mb-1'):
+        ui.label(label).classes('step-label')
+        ui.html(f'''<div class="formula-block"><div class="math-row">
+            <span style="font-style:italic;">{lhs}</span>
+            <span class="math-eq">=</span>
+            {rhs}
+            <span class="math-eq">=</span>
+            <span class="math-result">{result}</span>
+            <span class="math-unit">{unit}</span>
+        </div></div>''')
 
-    # Вывод
-    if st.session_state.calc_triggered:
-        with st.expander("Пошаговый расчет токов трансформатора", expanded=False):
-            st.subheader("1. Определение номинального тока")
-            st.latex(r"I_{nom} = \frac{S_{nom}}{\sqrt{3} \cdot U_{nom}}")
-            st.success(f"I_nom = {i_nom:.2f} А")
-            st.subheader("2. Расчет максимального рабочего тока")
-            st.latex(r"I_{rab.max} = I_{nom} \cdot K_{per}")
-            st.info(f"I_{{rab.max}} = {i_rab_max:.2f} А")
-            st.subheader("3. Расчет тока срабатывания защиты (МТЗ)")
-            st.latex(r"I_{szp} = \frac{K_{ots} \cdot K_{szp}}{K_{v}} \cdot I_{rab.max}")
-            st.success(f"I_{{szp}} = {i_szp:.2f} А")
-        
-        st.header("Результаты расчета уставок")
-        with st.expander("Уставка PHLPTOC для терминала ABB REF615", expanded=True):
-            if manual_start_value:
-                st.info(f"Расчетное значение: {set_value:.3f} x I_n")
-                st.warning(f"Принятое вручную Start value = {final_set_value:.3f} x I_n")
-                st.markdown(f"Фактический первичный ток срабатывания $I_{{pickup\\_actual}} = {i_pickup_actual:.2f}$ А")
-            else:
-                st.latex(r"Start\ value = \frac{I_{szp}}{I_{1nom.TT}}")
-                st.warning(f"Start value = {final_set_value:.3f} x I_n")
-        
-        with st.expander("Проверка чувствительности защиты", expanded=True):
-            st.latex(r"K_s = \frac{I^{(2)}_{K3.min}}{I_{szp\_actual}}")
-            st.info(f"Коэффициент чувствительности K_s = {k_s:.2f}")
-            if k_s >= 1.5:
-                st.success("✅ Условие выполняется: $K_s \\geq 1.5$. Чувствительность обеспечена.")
-            else:
-                st.error("❌ Условие не выполняется: $K_s < 1.5$.")
-                st.warning("Внимание: Защита должна выполняться с блокировкой по минимальному напряжению.")
-        
-        with st.expander("Расчет уставки выдержки времени (TMS / k)", expanded=True):
-            st.markdown(f"Выбрана кривая: **{curve_type}**")
-            if tms_calc is not None:
-                st.success(f"Требуемое значение TMS = {tms_calc:.3f}")
-                st.markdown("---")
-                st.markdown("**Ожидаемое время срабатывания защиты при различных кратностях тока:**")
-                def calc_time(multiple):
-                    A = CURVES[curve_type]["A"]; B = CURVES[curve_type]["B"]; c = CURVES[curve_type]["c"]
-                    if multiple <= 1: return None
-                    return (A / (multiple**c - 1) + B) * tms_calc
-                col1, col2, col3 = st.columns(3)
-                t_3x = calc_time(3); col1.metric("При 3 × I>", f"{t_3x:.2f} с" if t_3x else "Н/Д")
-                t_5x = calc_time(5); col2.metric("При 5 × I>", f"{t_5x:.2f} с" if t_5x else "Н/Д")
-                t_8x = calc_time(8); col3.metric("При 8 × I>", f"{t_8x:.2f} с" if t_8x else "Н/Д")
-            else:
-                st.error("Ошибка: Ток КЗ должен быть больше тока срабатывания защиты!")
-
-elif tool == "МТЗ Генератора (ANSI 67)":
-    st.title("⚡ Расчет направленной МТЗ генератора (ANSI 67)")
-    st.sidebar.header("Исходные данные генератора")
-    i_nom_g = st.sidebar.number_input("Номинальный ток генератора (I_ном.г, А)", value=2000.0, step=100.0)
-    k_ots_g = st.sidebar.number_input("Коэффициент отстройки (k_отс)", value=1.2, step=0.1)
-    k_v_g = st.sidebar.number_input("Коэффициент возврата (k_в)", value=0.935, step=0.005)
-    i_max_mtz_ol = st.sidebar.number_input("Макс. уставка МТЗ секц. выключателя (А)", value=1500.0, step=100.0)
-    k_tt = st.sidebar.number_input("Коэффициент трансформации ТТ (k_ТТ)", value=400.0, step=10.0)
-    i_kz_min_g = st.sidebar.number_input("Ток мин. двухфазного КЗ (А)", value=5000.0, step=100.0)
-    curve_type_g = st.sidebar.selectbox("Тип характеристики", list(CURVES.keys()), index=2)
-    t_mtz_ol = st.sidebar.number_input("Время МТЗ фидера (с)", value=0.5, step=0.1)
-    delta_t = st.sidebar.number_input("Ступень селективности (Δt, с)", value=0.3, step=0.1)
-    
-    i_perv_sz1 = (k_ots_g / k_v_g) * i_nom_g
-    i_perv_sz2 = k_ots_g * i_max_mtz_ol
-    i_perv_sz = max(i_perv_sz1, i_perv_sz2)
-    i_s = i_perv_sz / k_tt
-    k_s_g = i_kz_min_g / i_perv_sz if i_perv_sz > 0 else 0
-    t_d_i = t_mtz_ol + delta_t
-    
-    if i_kz_min_g > i_perv_sz:
-        A_const_g = CURVES[curve_type_g]["A"]; B_const_g = CURVES[curve_type_g]["B"]; c_const_g = CURVES[curve_type_g]["c"]
-        i_rel_g = i_kz_min_g / i_perv_sz
-        denominator_g = (A_const_g / ((i_rel_g ** c_const_g) - 1)) + B_const_g
-        tms_g = t_d_i / denominator_g
-    else:
-        tms_g = None
-        
-    # Кнопка запуска расчета
-    if st.button("🚀 Выполнить расчет", type="primary", key="gen_calc_btn", use_container_width=True):
-        st.session_state.calc_triggered = True
-
-    if st.session_state.calc_triggered:
-        with st.expander("Пошаговый расчет тока срабатывания", expanded=True):
-            st.latex(r"I_{perv.sz} = \max(I_{perv.sz1}, I_{perv.sz2})")
-            st.success(f"I_perv.sz = {i_perv_sz:.2f} А")
-        with st.expander("Вторичный ток и проверка чувствительности", expanded=True):
-            st.warning(f"I_s = {i_s:.3f} А")
-            st.info(f"Коэффициент чувствительности K_s = {k_s_g:.2f}")
-        with st.expander("Расчет уставки выдержки времени (TMS)", expanded=True):
-            if tms_g is not None:
-                st.success(f"Требуемое значение TMS = {tms_g:.3f}")
-                st.markdown("---")
-                st.markdown("**Ожидаемое время срабатывания защиты при различных кратностях тока:**")
-                def calc_time_g(multiple):
-                    A = CURVES[curve_type_g]["A"]; B = CURVES[curve_type_g]["B"]; c = CURVES[curve_type_g]["c"]
-                    if multiple <= 1: return None
-                    return (A / (multiple**c - 1) + B) * tms_g
-                col1, col2, col3 = st.columns(3)
-                t_3x_g = calc_time_g(3); col1.metric("При 3 × I>", f"{t_3x_g:.2f} с" if t_3x_g else "Н/Д")
-                t_5x_g = calc_time_g(5); col2.metric("При 5 × I>", f"{t_5x_g:.2f} с" if t_5x_g else "Н/Д")
-                t_8x_g = calc_time_g(8); col3.metric("При 8 × I>", f"{t_8x_g:.2f} с" if t_8x_g else "Н/Д")
-            else:
-                st.error("Ошибка расчета TMS!")
-
-elif tool == "Проверка селективности":
-    st.title("📊 Проверка селективности защит")
-    
-    col_ds, col_us = st.columns(2)
-    
-    with col_ds:
-        st.header("Нижестоящая защита (Downstream)")
-        ds_name = st.text_input("Название", value="Q1 (Фидер)")
-        ds_curve = st.selectbox("Характеристика", list(CURVES.keys()), key="ds_curve")
-        ds_pickup = st.number_input("Ток срабатывания (А)", value=200.0, step=10.0, key="ds_pickup")
-        ds_tms = st.number_input("Уставка TMS", value=0.1, step=0.01, format="%.3f", key="ds_tms")
-        
-    with col_us:
-        st.header("Вышестоящая защита (Upstream)")
-        us_name = st.text_input("Название", value="Q0 (Ввод)")
-        us_curve = st.selectbox("Характеристика", list(CURVES.keys()), key="us_curve")
-        us_pickup = st.number_input("Ток срабатывания (А)", value=400.0, step=10.0, key="us_pickup")
-        us_tms = st.number_input("Уставка TMS", value=0.2, step=0.01, format="%.3f", key="us_tms")
-
-    st.sidebar.header("Параметры анализа")
-    i_min_fault = st.sidebar.number_input("Мин. ток КЗ для анализа (А)", value=float(min(ds_pickup, us_pickup) * 1.5), step=100.0)
-    i_max_fault = st.sidebar.number_input("Макс. ток КЗ для анализа (А)", value=5000.0, step=500.0)
-    delta_t_req = st.sidebar.number_input("Требуемая ступень селективности (с)", value=0.3, step=0.05)
-
-    if st.button("🚀 Выполнить расчет", type="primary", key="sel_calc_btn", use_container_width=True):
-        st.session_state.calc_triggered = True
-
-    if st.session_state.calc_triggered:
-        # Генерация данных для графиков
-        currents = np.logspace(np.log10(min(ds_pickup, us_pickup) * 1.1), np.log10(i_max_fault), 100)
-        
-        def get_time(current, pickup, tms, curve_name):
-            A = CURVES[curve_name]["A"]; B = CURVES[curve_name]["B"]; c = CURVES[curve_name]["c"]
-            multiple = current / pickup
-            if multiple <= 1.001: return 100 # Очень большое время
-            return (A / (multiple**c - 1) + B) * tms
-
-        ds_times = [get_time(i, ds_pickup, ds_tms, ds_curve) for i in currents]
-        us_times = [get_time(i, us_pickup, us_tms, us_curve) for i in currents]
-
-        # Построение графика
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=currents, y=ds_times, name=ds_name, line=dict(color='blue', width=3)))
-        fig.add_trace(go.Scatter(x=currents, y=us_times, name=us_name, line=dict(color='red', width=3)))
-
-        fig.update_xaxes(type="log", title_text="Ток (А)", gridcolor='lightgrey')
-        fig.update_yaxes(type="log", title_text="Время (с)", gridcolor='lightgrey', range=[np.log10(0.01), np.log10(100)])
-        fig.update_layout(
-            title="Карта селективности (Логарифмический масштаб)",
-            hovermode="x unified",
-            template="plotly_white",
-            height=600
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Анализ селективности
-        st.header("Анализ координации")
-        
-        # Проверка при конкретных токах
-        test_currents = [i_min_fault, (i_min_fault + i_max_fault)/2, i_max_fault]
-        cols = st.columns(len(test_currents))
-        
-        for i, curr in enumerate(test_currents):
-            t_ds = get_time(curr, ds_pickup, ds_tms, ds_curve)
-            t_us = get_time(curr, us_pickup, us_tms, us_curve)
-            margin = t_us - t_ds
+# --- Module: Transformer Protection (ANSI 51) ---
+def transformer_protection_page():
+    with ui.row().classes('w-full no-wrap'):
+        # Sidebar-like input panel
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('TRANSFORMER DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('S_nom (kVA)', value=state.t_s_nom, on_change=lambda e: setattr(state, 't_s_nom', e.value)).classes('w-full')
+            ui.number('U_nom (kV)', value=state.t_u_nom, on_change=lambda e: setattr(state, 't_u_nom', e.value)).classes('w-full')
             
-            with cols[i]:
-                st.metric(f"При {curr:.0f} А", f"Δt = {margin:.2f} с")
-                if margin >= delta_t_req:
-                    st.success("✅ Селективно")
+            ui.label('CT PARAMETERS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('CT Primary (A)', value=state.t_ct_primary, on_change=lambda e: setattr(state, 't_ct_primary', e.value)).classes('w-full')
+            ui.select([5, 1], label='CT Secondary (A)', value=state.t_ct_secondary, on_change=lambda e: setattr(state, 't_ct_secondary', e.value)).classes('w-full')
+            
+            ui.label('MTZ COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('K_ots', value=state.t_k_ots, step=0.1, on_change=lambda e: setattr(state, 't_k_ots', e.value)).classes('w-full')
+            ui.number('K_szp', value=state.t_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_k_szp', e.value)).classes('w-full')
+            ui.number('K_v', value=state.t_k_v, step=0.01, on_change=lambda e: setattr(state, 't_k_v', e.value)).classes('w-full')
+            ui.number('K_per', value=state.t_k_per, step=0.1, on_change=lambda e: setattr(state, 't_k_per', e.value)).classes('w-full')
+            
+            ui.label('SENSITIVITY').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Min SC Current (A)', value=state.t_i_kz_min, step=50, on_change=lambda e: setattr(state, 't_i_kz_min', e.value)).classes('w-full')
+            
+            ui.label('TIME DELAY (TMS)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.select(list(CURVES.keys()), label='Curve Type', value=state.t_curve_type, on_change=lambda e: setattr(state, 't_curve_type', e.value)).classes('w-full')
+            ui.number('I_sc (A)', value=state.t_i_sc, step=100, on_change=lambda e: setattr(state, 't_i_sc', e.value)).classes('w-full')
+            ui.number('Req. Time (s)', value=state.t_t_op, step=0.1, on_change=lambda e: setattr(state, 't_t_op', e.value)).classes('w-full')
+            
+            ui.checkbox('Manual Start Value', value=state.t_manual_start, on_change=lambda e: setattr(state, 't_manual_start', e.value)).classes('mt-4')
+            if state.t_manual_start:
+                ui.number('Manual Value (x In)', value=state.t_manual_val, step=0.01, on_change=lambda e: setattr(state, 't_manual_val', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        # Main content area
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Transformer Protection Settings (ANSI 51)').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                # Calculations
+                i_nom = state.t_s_nom / (1.732 * state.t_u_nom)
+                i_rab_max = i_nom * state.t_k_per
+                i_szp = (state.t_k_ots * state.t_k_szp / state.t_k_v) * i_rab_max
+                set_value = i_szp / state.t_ct_primary
+                
+                if state.t_manual_start:
+                    final_set_value = state.t_manual_val
+                    i_pickup_actual = final_set_value * state.t_ct_primary
                 else:
-                    st.error("❌ Неселективно")
+                    final_set_value = set_value
+                    i_pickup_actual = i_szp
+                
+                k_s = state.t_i_kz_min / i_pickup_actual
+                
+                tms_calc = None
+                if state.t_i_sc > i_pickup_actual:
+                    c = CURVES[state.t_curve_type]
+                    i_rel = state.t_i_sc / i_pickup_actual
+                    denominator = (c["A"] / ((i_rel ** c["c"]) - 1)) + c["B"]
+                    tms_calc = state.t_t_op / denominator
 
-        if all((get_time(i, us_pickup, us_tms, us_curve) - get_time(i, ds_pickup, ds_tms, ds_curve)) >= delta_t_req for i in currents):
-            st.success(f"✅ Полная селективность обеспечена во всем диапазоне с запасом не менее {delta_t_req} с.")
-        else:
-            st.warning("⚠️ Внимание: В некоторых режимах селективность может быть нарушена.")
+                with ui.column().classes('w-full gap-4'):
+                    # Results Summary Metrics
+                    with ui.row().classes('w-full justify-between gap-4'):
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('I_nom').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_nom:.2f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Start Value').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{final_set_value:.3f} x In').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Sensitivity K_s').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{k_s:.2f}').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('TMS').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{tms_calc:.3f}' if tms_calc else 'N/A').classes('metric-value')
 
-elif tool == "Выбор сечения кабеля":
-    st.title("🔌 Выбор сечения кабеля и расчет падения напряжения")
-    
-    st.sidebar.header("Параметры нагрузки")
-    p_load = st.sidebar.number_input("Мощность нагрузки (кВт)", value=50.0, step=1.0)
-    u_nom_c = st.sidebar.number_input("Напряжение сети (В)", value=400, step=10)
-    cos_phi = st.sidebar.number_input("Коэффициент мощности (cos φ)", value=0.85, min_value=0.5, max_value=1.0, step=0.01)
-    
-    st.sidebar.header("Параметры линии")
-    length = st.sidebar.number_input("Длина линии (м)", value=100.0, step=10.0)
-    material = st.sidebar.radio("Материал жил", ["Cu", "Al"])
-    du_max = st.sidebar.number_input("Доп. падение напряжения (%)", value=5.0, step=0.5)
-    
-    # Расчет тока
-    i_load = (p_load * 1000) / (math.sqrt(3) * u_nom_c * cos_phi)
-    
-    # Кнопка запуска расчета
-    if st.button("🚀 Выполнить расчет", type="primary", key="cable_calc_btn", use_container_width=True):
-        st.session_state.calc_triggered = True
-        
-    if st.session_state.calc_triggered:
-        st.header("Результаты выбора кабеля")
-        
-        # 1. Выбор по току
-        available_sections = sorted(CABLE_DATA[material]["iz"].keys())
-        selected_section = None
-        for s in available_sections:
-            if CABLE_DATA[material]["iz"][s] >= i_load:
-                selected_section = s
-                break
-        
-        if selected_section is None:
-            st.error("Ошибка: Ток нагрузки превышает возможности самого большого сечения в базе!")
-        else:
-            # 2. Проверка по падению напряжения
-            rho = CABLE_DATA[material]["rho"]
-            x_react = CABLE_DATA[material]["reactance"]
-            sin_phi = math.sqrt(1 - cos_phi**2)
+                    # Detailed Steps
+                    with ui.expansion('Step-by-Step Calculations', icon='calculate').classes('w-full bg-white border'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('1. Nominal Current',
+                                     'I<sub>nom</sub>',
+                                     frac(f'{state.t_s_nom}', f'&radic;3 &middot; {state.t_u_nom}'),
+                                     f'{i_nom:.2f}', 'A')
+
+                            math_step('2. Max Operating Current',
+                                     'I<sub>rab.max</sub>',
+                                     f'{i_nom:.2f} &middot; K<sub>per</sub> = {i_nom:.2f} &middot; {state.t_k_per}',
+                                     f'{i_rab_max:.2f}', 'A')
+
+                            math_step('3. Protection Pickup Current',
+                                     'I<sub>szp</sub>',
+                                     frac(f'K<sub>ots</sub> &middot; K<sub>szp</sub>', 'K<sub>v</sub>') +
+                                     f' &middot; I<sub>rab.max</sub> = ' +
+                                     frac(f'{state.t_k_ots} &middot; {state.t_k_szp}', f'{state.t_k_v}') +
+                                     f' &middot; {i_rab_max:.2f}',
+                                     f'{i_szp:.2f}', 'A')
+
+                            math_step('4. Relay Start Value',
+                                     'Start value',
+                                     frac('I<sub>szp</sub>', 'CT<sub>primary</sub>') +
+                                     f' = ' + frac(f'{i_szp:.2f}', f'{state.t_ct_primary}'),
+                                     f'{set_value:.3f}', '&times; I<sub>n</sub>')
+
+                    with ui.expansion('Sensitivity Check', icon='security').classes('w-full bg-white border'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('Sensitivity Coefficient',
+                                     'K<sub>s</sub>',
+                                     frac('I<sub>kz.min</sub>', 'I<sub>pickup</sub>') +
+                                     f' = ' + frac(f'{state.t_i_kz_min:.0f}', f'{i_pickup_actual:.2f}'),
+                                     f'{k_s:.2f}')
+                        if k_s >= 1.5:
+                            ui.label('✅ Sensitivity confirmed (Ks ≥ 1.5)').classes('text-green-600 font-bold')
+                        else:
+                            ui.label('❌ Sensitivity insufficient (Ks < 1.5)').classes('text-red-600 font-bold')
+
+                    if tms_calc:
+                        with ui.expansion('Time Delay Analysis', icon='timer').classes('w-full bg-white border'):
+                            ui.label(f'TMS = {tms_calc:.3f}').classes('font-bold')
+                            ui.label('Expected operation time at multiples of pickup:').classes('text-slate-600 mt-2')
+                            
+                            def calc_time(m):
+                                c = CURVES[state.t_curve_type]
+                                if m <= 1: return None
+                                return (c["A"] / (m**c["c"] - 1) + c["B"]) * tms_calc
+                            
+                            with ui.row().classes('w-full gap-4 mt-2'):
+                                for mult in [3, 5, 8]:
+                                    t = calc_time(mult)
+                                    with ui.column().classes('items-center border p-2 rounded w-24'):
+                                        ui.label(f'{mult}x').classes('text-xs font-bold')
+                                        ui.label(f'{t:.2f}s' if t else 'N/A').classes('text-red-600')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('analytics', size='64px').classes('text-slate-300')
+                    ui.label('Enter data and click Calculate to see results').classes('text-slate-400 mt-4')
+
+# --- Module: Generator Protection (ANSI 67) ---
+def generator_protection_page():
+    with ui.row().classes('w-full no-wrap'):
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('GENERATOR DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('I_nom.g (A)', value=state.g_i_nom_g, on_change=lambda e: setattr(state, 'g_i_nom_g', e.value)).classes('w-full')
+            ui.number('K_ots', value=state.g_k_ots_g, step=0.1, on_change=lambda e: setattr(state, 'g_k_ots_g', e.value)).classes('w-full')
+            ui.number('K_v', value=state.g_k_v_g, step=0.005, on_change=lambda e: setattr(state, 'g_k_v_g', e.value)).classes('w-full')
             
-            while True:
-                r_line = (rho / selected_section) * (length / 1000) * 1000 # Ohm
-                x_line = (x_react) * (length / 1000) # Ohm
+            ui.label('COORDINATION').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Max I_mtz Feeder (A)', value=state.g_i_max_mtz_ol, on_change=lambda e: setattr(state, 'g_i_max_mtz_ol', e.value)).classes('w-full')
+            ui.number('CT Ratio (k_TT)', value=state.g_k_tt, step=10, on_change=lambda e: setattr(state, 'g_k_tt', e.value)).classes('w-full')
+            
+            ui.label('SENSITIVITY & TIME').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Min 2-ph SC (A)', value=state.g_i_kz_min_g, on_change=lambda e: setattr(state, 'g_i_kz_min_g', e.value)).classes('w-full')
+            ui.select(list(CURVES.keys()), label='Curve Type', value=state.g_curve_type_g, on_change=lambda e: setattr(state, 'g_curve_type_g', e.value)).classes('w-full')
+            ui.number('Feeder Time (s)', value=state.g_t_mtz_ol, step=0.1, on_change=lambda e: setattr(state, 'g_t_mtz_ol', e.value)).classes('w-full')
+            ui.number('Delta T (s)', value=state.g_delta_t, step=0.1, on_change=lambda e: setattr(state, 'g_delta_t', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Generator Directional Protection (ANSI 67)').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                i_perv_sz1 = (state.g_k_ots_g / state.g_k_v_g) * state.g_i_nom_g
+                i_perv_sz2 = state.g_k_ots_g * state.g_i_max_mtz_ol
+                i_perv_sz = max(i_perv_sz1, i_perv_sz2)
+                i_s = i_perv_sz / state.g_k_tt
+                k_s_g = state.g_i_kz_min_g / i_perv_sz if i_perv_sz > 0 else 0
+                t_d_i = state.g_t_mtz_ol + state.g_delta_t
                 
-                delta_u = math.sqrt(3) * i_load * ( (rho/selected_section * cos_phi) + (x_react/1000 * sin_phi) ) * length
-                delta_u_pct = (delta_u / u_nom_c) * 100
+                tms_g = None
+                if state.g_i_kz_min_g > i_perv_sz:
+                    c = CURVES[state.g_curve_type_g]
+                    i_rel_g = state.g_i_kz_min_g / i_perv_sz
+                    denominator_g = (c["A"] / ((i_rel_g ** c["c"]) - 1)) + c["B"]
+                    tms_g = t_d_i / denominator_g
+
+                with ui.column().classes('w-full gap-4'):
+                    with ui.row().classes('w-full justify-between gap-4'):
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('I_pickup (Primary)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_perv_sz:.2f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('I_pickup (Secondary)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_s:.3f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Sensitivity Ks').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{k_s_g:.2f}').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('TMS').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{tms_g:.3f}' if tms_g else 'N/A').classes('metric-value')
+
+                    with ui.expansion('Calculation Logic', icon='menu_book').classes('w-full bg-white border'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('1. Sensitivity Condition 1',
+                                     'I<sub>perv.sz1</sub>',
+                                     frac('K<sub>ots</sub>', 'K<sub>v</sub>') +
+                                     f' &middot; I<sub>nom</sub> = ' +
+                                     frac(f'{state.g_k_ots_g}', f'{state.g_k_v_g}') +
+                                     f' &middot; {state.g_i_nom_g:.0f}',
+                                     f'{i_perv_sz1:.2f}', 'A')
+
+                            math_step('2. Sensitivity Condition 2',
+                                     'I<sub>perv.sz2</sub>',
+                                     f'K<sub>ots</sub> &middot; I<sub>mtz.max</sub> = {state.g_k_ots_g} &middot; {state.g_i_max_mtz_ol:.0f}',
+                                     f'{i_perv_sz2:.2f}', 'A')
+
+                            math_step('3. Final Pickup Current',
+                                     'I<sub>perv.sz</sub>',
+                                     f'max({i_perv_sz1:.2f}, {i_perv_sz2:.2f})',
+                                     f'{i_perv_sz:.2f}', 'A')
+
+                            math_step('4. Secondary Pickup',
+                                     'I<sub>s</sub>',
+                                     frac('I<sub>perv.sz</sub>', 'k<sub>TT</sub>') +
+                                     f' = ' + frac(f'{i_perv_sz:.2f}', f'{state.g_k_tt:.0f}'),
+                                     f'{i_s:.3f}', 'A')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('electric_bolt', size='64px').classes('text-slate-300')
+                    ui.label('Enter data and click Calculate to see results').classes('text-slate-400 mt-4')
+
+# --- Module: Selectivity Analysis ---
+def selectivity_page():
+    with ui.row().classes('w-full no-wrap'):
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('DOWNSTREAM (DS)').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.input('Name', value=state.s_ds_name, on_change=lambda e: setattr(state, 's_ds_name', e.value)).classes('w-full')
+            ui.select(list(CURVES.keys()), label='Curve', value=state.s_ds_curve, on_change=lambda e: setattr(state, 's_ds_curve', e.value)).classes('w-full')
+            ui.number('Pickup (A)', value=state.s_ds_pickup, on_change=lambda e: setattr(state, 's_ds_pickup', e.value)).classes('w-full')
+            ui.number('TMS', value=state.s_ds_tms, step=0.01, on_change=lambda e: setattr(state, 's_ds_tms', e.value)).classes('w-full')
+            
+            ui.label('UPSTREAM (US)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.input('Name', value=state.s_us_name, on_change=lambda e: setattr(state, 's_us_name', e.value)).classes('w-full')
+            ui.select(list(CURVES.keys()), label='Curve', value=state.s_us_curve, on_change=lambda e: setattr(state, 's_us_curve', e.value)).classes('w-full')
+            ui.number('Pickup (A)', value=state.s_us_pickup, on_change=lambda e: setattr(state, 's_us_pickup', e.value)).classes('w-full')
+            ui.number('TMS', value=state.s_us_tms, step=0.01, on_change=lambda e: setattr(state, 's_us_tms', e.value)).classes('w-full')
+            
+            ui.label('ANALYSIS RANGE').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Min Fault (A)', value=state.s_i_min_fault, on_change=lambda e: setattr(state, 's_i_min_fault', e.value)).classes('w-full')
+            ui.number('Max Fault (A)', value=state.s_i_max_fault, on_change=lambda e: setattr(state, 's_i_max_fault', e.value)).classes('w-full')
+            ui.number('Req. Delta T (s)', value=state.s_delta_t_req, step=0.05, on_change=lambda e: setattr(state, 's_delta_t_req', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Protection Selectivity Analysis').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                currents = np.logspace(np.log10(min(state.s_ds_pickup, state.s_us_pickup) * 1.1), np.log10(state.s_i_max_fault), 100)
                 
-                if delta_u_pct <= du_max:
-                    break
+                def get_time(current, pickup, tms, curve_name):
+                    c = CURVES[curve_name]
+                    multiple = current / pickup
+                    if multiple <= 1.001: return 100
+                    return (c["A"] / (multiple**c["c"] - 1) + c["B"]) * tms
+
+                ds_times = [get_time(i, state.s_ds_pickup, state.s_ds_tms, state.s_ds_curve) for i in currents]
+                us_times = [get_time(i, state.s_us_pickup, state.s_us_tms, state.s_us_curve) for i in currents]
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=currents, y=ds_times, name=state.s_ds_name, line=dict(color='#3b82f6', width=3)))
+                fig.add_trace(go.Scatter(x=currents, y=us_times, name=state.s_us_name, line=dict(color='#ef4444', width=3)))
+
+                fig.update_xaxes(type="log", title_text="Current (A)", gridcolor='#e2e8f0')
+                fig.update_yaxes(type="log", title_text="Time (s)", gridcolor='#e2e8f0', range=[np.log10(0.01), np.log10(100)])
+                fig.update_layout(
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    template="plotly_white",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                ui.plotly(fig).classes('w-full h-96')
+
+                with ui.row().classes('w-full gap-4 mt-6'):
+                    test_currents = [state.s_i_min_fault, (state.s_i_min_fault + state.s_i_max_fault)/2, state.s_i_max_fault]
+                    for curr in test_currents:
+                        t_ds = get_time(curr, state.s_ds_pickup, state.s_ds_tms, state.s_ds_curve)
+                        t_us = get_time(curr, state.s_us_pickup, state.s_us_tms, state.s_us_curve)
+                        margin = t_us - t_ds
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label(f'At {curr:.0f} A').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'Δt = {margin:.2f} s').classes('metric-value')
+                            if margin >= state.s_delta_t_req:
+                                ui.label('SELECTIVE').classes('text-green-600 text-[10px] font-bold')
+                            else:
+                                ui.label('NON-SELECTIVE').classes('text-red-600 text-[10px] font-bold')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('legend_toggle', size='64px').classes('text-slate-300')
+                    ui.label('Enter parameters to generate coordination map').classes('text-slate-400 mt-4')
+
+# --- Module: Cable Selection ---
+def cable_page():
+    with ui.row().classes('w-full no-wrap'):
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('LOAD PARAMETERS').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('P_load (kW)', value=state.c_p_load, on_change=lambda e: setattr(state, 'c_p_load', e.value)).classes('w-full')
+            ui.number('U_nom (V)', value=state.c_u_nom, on_change=lambda e: setattr(state, 'c_u_nom', e.value)).classes('w-full')
+            ui.number('cos φ', value=state.c_cos_phi, step=0.01, min_value=0.5, max_value=1.0, on_change=lambda e: setattr(state, 'c_cos_phi', e.value)).classes('w-full')
+            
+            ui.label('LINE PARAMETERS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Length (m)', value=state.c_length, on_change=lambda e: setattr(state, 'c_length', e.value)).classes('w-full')
+            ui.radio(['Cu', 'Al'], value=state.c_material, on_change=lambda e: setattr(state, 'c_material', e.value)).props('inline').classes('mt-2')
+            ui.number('Max ΔU (%)', value=state.c_du_max, step=0.5, on_change=lambda e: setattr(state, 'c_du_max', e.value)).classes('w-full mt-2')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Cable Selection & Voltage Drop').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                i_load = (state.c_p_load * 1000) / (math.sqrt(3) * state.c_u_nom * state.c_cos_phi)
                 
-                # Ищем следующее сечение
-                idx = available_sections.index(selected_section)
-                if idx + 1 < len(available_sections):
-                    selected_section = available_sections[idx + 1]
+                available_sections = sorted(CABLE_DATA[state.c_material]["iz"].keys())
+                selected_section = None
+                for s in available_sections:
+                    if CABLE_DATA[state.c_material]["iz"][s] >= i_load:
+                        selected_section = s
+                        break
+                
+                if selected_section:
+                    rho = CABLE_DATA[state.c_material]["rho"]
+                    x_react = CABLE_DATA[state.c_material]["reactance"]
+                    sin_phi = math.sqrt(1 - state.c_cos_phi**2)
+                    
+                    while True:
+                        delta_u = math.sqrt(3) * i_load * ((rho/selected_section * state.c_cos_phi) + (x_react/1000 * sin_phi)) * state.c_length
+                        delta_u_pct = (delta_u / state.c_u_nom) * 100
+                        
+                        if delta_u_pct <= state.c_du_max:
+                            break
+                        
+                        idx = available_sections.index(selected_section)
+                        if idx + 1 < len(available_sections):
+                            selected_section = available_sections[idx + 1]
+                        else:
+                            break
+
+                    with ui.row().classes('w-full gap-4'):
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Design Current').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_load:.2f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Selected Section').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{selected_section} mm²').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Voltage Drop ΔU').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{delta_u_pct:.2f} %').classes('metric-value')
+
+                    with ui.expansion('Calculation Details', icon='info').classes('w-full bg-white border mt-6'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('1. Load Current', 
+                                     'I', 
+                                     f'\\frac{{{state.c_p_load} \\cdot 1000}}{{\\sqrt{{3}} \\cdot {state.c_u_nom} \\cdot {state.c_cos_phi}}}', 
+                                     f'{i_load:.2f}', 'A')
+                            
+                            ui.label(f'Permissible Current (Iz): {CABLE_DATA[state.c_material]["iz"][selected_section]} A for {selected_section} mm²').classes('mb-4 text-slate-600')
+
+                            math_step('2. Voltage Drop', 
+                                     '\\Delta U\\%', 
+                                     f'\\frac{{\\Delta U}}{{{state.c_u_nom}}} \\cdot 100', 
+                                     f'{delta_u_pct:.2f}', '%')
+                            
+                            if delta_u_pct <= state.c_du_max:
+                                ui.label('✅ Meets voltage drop requirements').classes('text-green-600 font-bold')
+                            else:
+                                ui.label('❌ Fails voltage drop requirements').classes('text-red-600 font-bold')
                 else:
-                    st.warning(f"Даже максимальное сечение {selected_section} мм² не удовлетворяет условию по падению напряжения.")
-                    break
+                    ui.label('Current too high for available cable sizes').classes('text-red-600')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('power', size='64px').classes('text-slate-300')
+                    ui.label('Enter load parameters to select cable').classes('text-slate-400 mt-4')
+
+# --- Module: SC Generator (IEC 60909) ---
+def sc_generator_page():
+    with ui.row().classes('w-full no-wrap'):
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('GENERATOR DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('S_n (MVA)', value=state.sc_s_n, on_change=lambda e: setattr(state, 'sc_s_n', e.value)).classes('w-full')
+            ui.number('U_rG (kV)', value=state.sc_u_rG, on_change=lambda e: setattr(state, 'sc_u_rG', e.value)).classes('w-full')
+            ui.number('x\"d (p.u.)', value=state.sc_x_d_pu, step=0.01, format="%.4f", on_change=lambda e: setattr(state, 'sc_x_d_pu', e.value)).classes('w-full')
             
-            # Вывод результатов
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Расчетный ток", f"{i_load:.2f} А")
-            col2.metric("Рекомендованное сечение", f"{selected_section} мм²")
-            col3.metric("Падение напряжения", f"{delta_u_pct:.2f} %")
+            ui.label('NETWORK').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('U_n (kV)', value=state.sc_u_n, on_change=lambda e: setattr(state, 'sc_u_n', e.value)).classes('w-full')
+            ui.select([50, 60], label='Freq (Hz)', value=state.sc_freq, on_change=lambda e: setattr(state, 'sc_freq', e.value)).classes('w-full')
             
-            st.markdown("---")
+            ui.label('FAULT PARAMETERS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.select(["Generator Terminals (LV Bus)", "HV Bus (after transformer)"], multiple=True, label='Locations', value=state.sc_fault_loc, on_change=lambda e: setattr(state, 'sc_fault_loc', e.value)).classes('w-full')
+            ui.number('Fault Duration T_k (s)', value=state.sc_t_k, step=0.05, on_change=lambda e: setattr(state, 'sc_t_k', e.value)).classes('w-full')
+
+            if "HV Bus (after transformer)" in state.sc_fault_loc:
+                ui.label('TRANSFORMER DATA').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+                ui.number('S_T (MVA)', value=state.sc_s_T, on_change=lambda e: setattr(state, 'sc_s_T', e.value)).classes('w-full')
+                ui.number('U_T_HV (kV)', value=state.sc_u_T_hv, on_change=lambda e: setattr(state, 'sc_u_T_hv', e.value)).classes('w-full')
+                ui.number('u_k (%)', value=state.sc_u_k_pct, on_change=lambda e: setattr(state, 'sc_u_k_pct', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Short-Circuit Calculation (IEC 60909)').classes('text-2xl font-bold text-slate-800 mb-6')
             
-            with st.expander("Подробности расчета", expanded=True):
-                st.subheader("1. Расчет тока нагрузки")
-                st.latex(r"I = \frac{P \cdot 1000}{\sqrt{3} \cdot U \cdot \cos \phi}")
-                st.info(f"I = {i_load:.2f} А")
+            if state.calc_triggered:
+                # Calculations
+                sin_phi_G = math.sqrt(max(1 - state.sc_cos_phi_G**2, 0))
+                z_base = (state.sc_u_rG ** 2) / state.sc_s_n
+                x_d_ohm = state.sc_x_d_pu * z_base
+                r_a_ohm = state.sc_r_a_pu * z_base
                 
-                st.subheader("2. Выбор сечения по нагреву")
-                st.write(f"Минимальное сечение для тока {i_load:.2f} А: **{selected_section} мм²**")
-                st.write(f"Допустимый ток выбранного кабеля: **{CABLE_DATA[material]['iz'][selected_section]} А**")
+                denom_KG = 1 + state.sc_x_d_pu * sin_phi_G
+                K_G = (state.sc_u_n / state.sc_u_rG) * (state.sc_c_max / denom_KG)
                 
-                st.subheader("3. Проверка падения напряжения")
-                st.latex(r"\Delta U\% = \frac{\sqrt{3} \cdot I \cdot (R \cdot \cos \phi + X \cdot \sin \phi) \cdot L}{U_{nom}} \cdot 100")
-                if delta_u_pct <= du_max:
-                    st.success(f"✅ Условие выполнено: {delta_u_pct:.2f}% ≤ {du_max}%")
-                else:
-                    st.error(f"❌ Условие не выполнено: {delta_u_pct:.2f}% > {du_max}%")
+                r_GK = K_G * r_a_ohm
+                x_GK = K_G * x_d_ohm
+                z_GK = math.sqrt(r_GK**2 + x_GK**2)
+                
+                def peak_factor(r, x):
+                    rX = r / x if x > 0 else 0
+                    return 1.02 + 0.98 * math.exp(-3 * rX)
+
+                results = []
+                if "Generator Terminals (LV Bus)" in state.sc_fault_loc:
+                    kap = peak_factor(r_GK, x_GK)
+                    ik3 = (state.sc_c_max * state.sc_u_rG * 1e3) / (math.sqrt(3) * z_GK) / 1e3
+                    ip = kap * math.sqrt(2) * ik3
+                    results.append({"loc": "LV Bus", "ik3": ik3, "ip": ip, "kap": kap})
+                
+                if "HV Bus (after transformer)" in state.sc_fault_loc:
+                    z_T_base_hv = (state.sc_u_T_hv**2) / state.sc_s_T
+                    z_T_hv = (state.sc_u_k_pct / 100) * z_T_base_hv
+                    r_T_pu = (state.sc_p_k_kw * 1e3) / (state.sc_s_T * 1e6)
+                    r_T_hv = r_T_pu * z_T_base_hv
+                    x_T_hv = math.sqrt(max(z_T_hv**2 - r_T_hv**2, 0))
+                    
+                    n_ratio = state.sc_u_T_hv / state.sc_u_T_lv
+                    r_tot_hv = r_GK * n_ratio**2 + r_T_hv
+                    x_tot_hv = x_GK * n_ratio**2 + x_T_hv
+                    z_tot_hv = math.sqrt(r_tot_hv**2 + x_tot_hv**2)
+                    
+                    kap_hv = peak_factor(r_tot_hv, x_tot_hv)
+                    ik3_hv = (state.sc_c_max * state.sc_u_T_hv * 1e3) / (math.sqrt(3) * z_tot_hv) / 1e3
+                    ip_hv = kap_hv * math.sqrt(2) * ik3_hv
+                    results.append({"loc": f"HV Bus ({state.sc_u_T_hv}kV)", "ik3": ik3_hv, "ip": ip_hv, "kap": kap_hv})
+
+                with ui.row().classes('w-full gap-4'):
+                    for res in results:
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label(res["loc"]).classes('text-xs font-bold text-slate-400')
+                            ui.label(f'I\"k3 = {res["ik3"]:.3f} kA').classes('metric-value')
+                            ui.label(f'ip = {res["ip"]:.3f} kA (κ={res["kap"]:.2f})').classes('text-xs text-slate-600')
+
+                with ui.expansion('Impedance Derivation', icon='hub').classes('w-full bg-white border mt-6'):
+                    with ui.column().classes('w-full p-4'):
+                        math_step('1. Generator Base Impedance', 
+                                 'Z_{base}', 
+                                 f'\\frac{{U_{{rG}}^2}}{{S_n}}', 
+                                 f'{z_base:.4f}', '\\Omega')
+                        
+                        math_step('2. Correction Factor', 
+                                 'K_G', 
+                                 f'\\frac{{U_n}}{{U_{{rG}}}} \\cdot \\frac{{C_{{max}}}}{{1 + x\"_d \\cdot \\sin\\phi_G}}', 
+                                 f'{K_G:.4f}')
+                        
+                        math_step('3. Corrected Reactance', 
+                                 'X_{GK}', 
+                                 'K_G \\cdot X\"_d', 
+                                 f'{x_GK:.4f}', '\\Omega')
+                        
+                        math_step('4. SC Current (3-phase)', 
+                                 'I\"_{k3}', 
+                                 '\\frac{C_{max} \\cdot U_{rG}}{\\sqrt{3} \\cdot Z_{GK}}', 
+                                 f'{ik3:.3f}', 'kA')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('settings_input_component', size='64px').classes('text-slate-300')
+                    ui.label('Enter system data to calculate SC currents').classes('text-slate-400 mt-4')
+
+# --- Module: Earthing (IEEE 80) ---
+def earthing_page():
+    with ui.row().classes('w-full no-wrap'):
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('FAULT PARAMETERS').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('If (A)', value=state.e_if_sym, on_change=lambda e: setattr(state, 'e_if_sym', e.value)).classes('w-full')
+            ui.number('tf (s)', value=state.e_tf, step=0.05, on_change=lambda e: setattr(state, 'e_tf', e.value)).classes('w-full')
+            ui.number('X/R', value=state.e_xr, on_change=lambda e: setattr(state, 'e_xr', e.value)).classes('w-full')
+            ui.number('Sf', value=state.e_sf, step=0.01, on_change=lambda e: setattr(state, 'e_sf', e.value)).classes('w-full')
             
-            # Таблица доступных сечений
-            st.subheader("Таблица допустимых токов (в воздухе)")
-            df_iz = pd.DataFrame({
-                "Сечение (мм²)": list(CABLE_DATA[material]["iz"].keys()),
-                "Ток Iz (А)": list(CABLE_DATA[material]["iz"].values())
-            })
-            st.dataframe(df_iz, use_container_width=True, hide_index=True)
+            ui.label('GRID GEOMETRY').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Area (m²)', value=state.e_a, on_change=lambda e: setattr(state, 'e_a', e.value)).classes('w-full')
+            ui.number('Burial h (m)', value=state.e_h, step=0.05, on_change=lambda e: setattr(state, 'e_h', e.value)).classes('w-full')
+            ui.number('Length Lc (m)', value=state.e_lc, on_change=lambda e: setattr(state, 'e_lc', e.value)).classes('w-full')
+            ui.number('nx', value=state.e_nx, step=1, on_change=lambda e: setattr(state, 'e_nx', e.value)).classes('w-full')
+            ui.number('ny', value=state.e_ny, step=1, on_change=lambda e: setattr(state, 'e_ny', e.value)).classes('w-full')
+            
+            ui.label('SOIL DATA').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('ρ (Ohm.m)', value=state.e_rho, on_change=lambda e: setattr(state, 'e_rho', e.value)).classes('w-full')
+            ui.number('ρ_s (Ohm.m)', value=state.e_rho_s, on_change=lambda e: setattr(state, 'e_rho_s', e.value)).classes('w-full')
 
-# ─────────────────────────────────────────────────────────────────
-# SC GENERATOR — IEC 60909
-# ─────────────────────────────────────────────────────────────────
-elif tool == "SC Generator (IEC 60909)":
-    st.title("⚡ Short-Circuit Current Calculation — IEC 60909")
-    st.caption("IEC 60909-0:2016 | Initial symmetrical short-circuit current from a synchronous generator")
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
 
-    # ── Sidebar inputs ──────────────────────────────────────────
-    st.sidebar.header("Generator Data")
-    s_n    = st.sidebar.number_input("Rated Power S_n (MVA)", value=100.0, step=1.0, min_value=0.1)
-    u_rG   = st.sidebar.number_input("Rated Voltage U_rG (kV)", value=11.0, step=0.1, min_value=0.1)
-    cos_phi_G = st.sidebar.number_input("Rated Power Factor cos φ", value=0.85, min_value=0.1, max_value=1.0, step=0.01)
-    x_d_pu = st.sidebar.number_input("Subtransient Reactance X\"d (p.u.)", value=0.14, step=0.01, min_value=0.001, format="%.4f")
-    r_a_pu = st.sidebar.number_input("Armature Resistance R_a (p.u.)", value=0.003, step=0.001, min_value=0.0, format="%.4f")
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Substation Earthing Safety (IEEE 80)').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                # Core IEEE 80 Logic
+                ta_dc = state.e_xr / (2 * math.pi * 50)
+                df = math.sqrt(1 + (ta_dc / state.e_tf) * (1 - math.exp(-2 * state.e_tf / ta_dc))) if state.e_tf > 0 else 1.0
+                ig_sym = state.e_sf * state.e_if_sym
+                ig_max = df * ig_sym
+                
+                lt = state.e_lc + state.e_lr # Simplified for brevity in this port
+                rg = state.e_rho * (1/lt + (1/math.sqrt(20*state.e_a)) * (1 + 1/(1 + state.e_h * math.sqrt(20/state.e_a))))
+                gpr = ig_max * rg
+                
+                cs = 1 - (0.09*(1 - state.e_rho/state.e_rho_s))/(2*state.e_hs + 0.09) if state.e_hs > 0 else 1.0
+                ib = (0.116 if state.e_body_weight == 50 else 0.157) / math.sqrt(state.e_ts)
+                e_touch_tol = (1000 + 1.5 * cs * state.e_rho_s) * ib
+                e_step_tol = (1000 + 6.0 * cs * state.e_rho_s) * ib
+                
+                dx = state.e_lx / (state.e_nx - 1) if state.e_nx > 1 else state.e_lx
+                dy = state.e_ly / (state.e_ny - 1) if state.e_ny > 1 else state.e_ly
+                d_avg = (dx + dy) / 2.0
+                n_geom = math.sqrt(state.e_nx * state.e_ny)
+                ki = 0.644 + 0.148 * n_geom
+                kh = math.sqrt(1 + state.e_h / 1.0)
+                
+                # Simplified Km calculation for port
+                km = (1/(2*math.pi)) * (math.log(d_avg**2 / (16*state.e_h*state.e_d_cond)) + math.log((d_avg + 2*state.e_h)**2 / (8*d_avg*state.e_d_cond)) - state.e_h/(4*state.e_d_cond) + (1/kh)*math.log(8/(math.pi*(2*n_geom-1))))
+                em = state.e_rho * ig_max * km * ki / state.e_lc
+                
+                touch_ok = em <= e_touch_tol
 
-    st.sidebar.header("Network & Fault Parameters")
-    u_n   = st.sidebar.number_input("Nominal System Voltage U_n (kV)", value=11.0, step=0.1, min_value=0.1)
-    freq  = st.sidebar.selectbox("System Frequency (Hz)", [50, 60])
-    c_mode = st.sidebar.radio("Voltage Factor c", ["Auto (IEC table)", "Manual"])
-    if c_mode == "Auto (IEC table)":
-        c_max = 1.10
-        c_min = 0.95 if u_n <= 1.0 else 1.00
-        st.sidebar.info(f"c_max = {c_max} | c_min = {c_min}")
+                with ui.row().classes('w-full gap-4'):
+                    with ui.card().classes('flex-grow result-card'):
+                        ui.label('Ground Resistance Rg').classes('text-xs font-bold text-slate-400')
+                        ui.label(f'{rg:.4f} Ω').classes('metric-value')
+                    with ui.card().classes('flex-grow result-card'):
+                        ui.label('GPR').classes('text-xs font-bold text-slate-400')
+                        ui.label(f'{gpr:.0f} V').classes('metric-value')
+                    with ui.card().classes('flex-grow result-card'):
+                        ui.label('Mesh Voltage Em').classes('text-xs font-bold text-slate-400')
+                        ui.label(f'{em:.1f} V').classes('metric-value')
+                    with ui.card().classes('flex-grow result-card'):
+                        ui.label('Status').classes('text-xs font-bold text-slate-400')
+                        ui.label('PASS' if touch_ok else 'FAIL').classes(f'metric-value {"text-green-600" if touch_ok else "text-red-600"}')
+
+                with ui.expansion('Safety Verification Details', icon='verified_user').classes('w-full bg-white border mt-6'):
+                    with ui.column().classes('w-full p-4'):
+                        math_step('1. Body Current Limit', 
+                                 'I_b', 
+                                 f'\\frac{{0.116}}{{\\sqrt{{t_s}}}}', 
+                                 f'{ib:.3f}', 'A')
+                        
+                        math_step('2. Allowable Touch Voltage', 
+                                 'E_{touch.tol}', 
+                                 '(1000 + 1.5 \\cdot C_s \\cdot \\rho_s) \\cdot I_b', 
+                                 f'{e_touch_tol:.1f}', 'V')
+                        
+                        math_step('3. Actual Mesh Voltage', 
+                                 'E_m', 
+                                 '\\frac{\\rho \\cdot I_G \\cdot K_m \\cdot K_i}{L_c}', 
+                                 f'{em:.1f}', 'V')
+
+                        if touch_ok:
+                            ui.label('✅ Safety criteria met for touch voltage.').classes('text-green-600 font-bold mt-2')
+                        else:
+                            ui.label('❌ Safety criteria NOT met. Increase grid density.').classes('text-red-600 font-bold mt-2')
+                    
+                with ui.expansion('Impedance & Currents', icon='bolt').classes('w-full bg-white border mt-2'):
+                    with ui.column().classes('w-full p-4'):
+                        math_step('Grid Resistance', 
+                                 'R_g', 
+                                 '\\rho \\left[ \\frac{1}{L_T} + \\frac{1}{\\sqrt{20A}} \\left( 1 + \\frac{1}{1+h\\sqrt{20/A}} \\right) \\right]', 
+                                 f'{rg:.4f}', '\\Omega')
+                        
+                        math_step('Decrement Factor', 
+                                 'D_f', 
+                                 '\\sqrt{1 + \\frac{T_a}{t_f}(1 - e^{-2t_f/T_a})}', 
+                                 f'{df:.3f}')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('public', size='64px').classes('text-slate-300')
+                    ui.label('Enter grid and soil data for safety analysis').classes('text-slate-400 mt-4')
+
+# --- Module: Incomer Protection (ANSI 67) ---
+def incomer_protection_page():
+    with ui.row().classes('w-full no-wrap'):
+        # Sidebar for inputs
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('LOAD DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('I_rab.own.max (A)', value=state.inc_i_rab_own_max, on_change=lambda e: setattr(state, 'inc_i_rab_own_max', e.value)).classes('w-full')
+            ui.number('I_rab.neighbor.max (A)', value=state.inc_i_rab_neighbor_max, on_change=lambda e: setattr(state, 'inc_i_rab_neighbor_max', e.value)).classes('w-full')
+            
+            ui.label('COORDINATION (SV)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('I_sz.SV (A)', value=state.inc_i_sz_sv, on_change=lambda e: setattr(state, 'inc_i_sz_sv', e.value)).classes('w-full')
+            ui.number('t_sz.SV (s)', value=state.inc_t_sz_sv, step=0.1, on_change=lambda e: setattr(state, 'inc_t_sz_sv', e.value)).classes('w-full')
+            ui.number('Delta t (s)', value=state.inc_delta_t, step=0.05, on_change=lambda e: setattr(state, 'inc_delta_t', e.value)).classes('w-full mt-2')
+
+            ui.label('FAULT & COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Min SC (I_k.min) (A)', value=state.inc_i_k_min, on_change=lambda e: setattr(state, 'inc_i_k_min', e.value)).classes('w-full')
+            ui.number('K_szp', value=state.inc_k_szp, step=0.1, on_change=lambda e: setattr(state, 'inc_k_szp', e.value)).classes('w-full')
+            ui.number('K_ots', value=state.inc_k_ots, step=0.05, on_change=lambda e: setattr(state, 'inc_k_ots', e.value)).classes('w-full')
+            ui.number('K_v', value=state.inc_k_v, step=0.005, on_change=lambda e: setattr(state, 'inc_k_v', e.value)).classes('w-full')
+            ui.number('K\'_otv', value=state.inc_k_otv, step=0.1, on_change=lambda e: setattr(state, 'inc_k_otv', e.value)).classes('w-full')
+            ui.number('K_tok', value=state.inc_k_tok, step=0.1, on_change=lambda e: setattr(state, 'inc_k_tok', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        # Main content area
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Incomer Protection Settings (ANSI 67)').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                # Calculations
+                # Condition 1: ATS overload and self-start
+                i_sz_bb1 = (state.inc_k_ots / state.inc_k_v) * (state.inc_k_szp * state.inc_i_rab_neighbor_max + state.inc_k_otv * state.inc_i_rab_own_max)
+                
+                # Condition 2: Selectivity with Section Switch (SV)
+                i_sz_bb2 = (state.inc_k_ots / state.inc_k_tok) * (state.inc_i_sz_sv + state.inc_i_rab_own_max)
+                
+                # Final Pickup
+                i_sz_bb = max(i_sz_bb1, i_sz_bb2)
+                
+                # Sensitivity
+                k_s_inc = (math.sqrt(3)/2 * state.inc_i_k_min) / i_sz_bb if i_sz_bb > 0 else 0
+                
+                # Time Delay
+                t_sz_bb = state.inc_t_sz_sv + state.inc_delta_t
+
+                with ui.column().classes('w-full gap-4'):
+                    # Metrics Row
+                    with ui.row().classes('w-full justify-between gap-4'):
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('I_pickup (Incomer)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_sz_bb:.1f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Time Delay (t_sz)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{t_sz_bb:.2f} s').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Sensitivity Ks').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{k_s_inc:.2f}').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Directional').classes('text-xs font-bold text-slate-400')
+                            ui.label('Forward').classes('metric-value text-blue-600')
+
+                    # Detailed Steps
+                    with ui.expansion('Step-by-Step Calculations', icon='calculate').classes('w-full bg-white border').props('value=True'):
+                        with ui.column().classes('w-full p-4'):
+                            # Step 1: Condition 1
+                            math_step('1. Condition 1 (ATS Overload)',
+                                     'I<sub>sz.BB(1)</sub>',
+                                     frac('K<sub>ots</sub>', 'K<sub>v</sub>') + f' &middot; (K<sub>szp</sub> &middot; I<sub>rab.neighbor.max</sub> + K\'<sub>otv</sub> &middot; I<sub>rab.own.max</sub>) = ' +
+                                     frac(f'{state.inc_k_ots}', f'{state.inc_k_v}') + f' &middot; ({state.inc_k_szp} &middot; {state.inc_i_rab_neighbor_max} + {state.inc_k_otv} &middot; {state.inc_i_rab_own_max})',
+                                     f'{i_sz_bb1:.1f}', 'A')
+
+                            # Step 2: Condition 2
+                            math_step('2. Condition 2 (Selectivity with SV)',
+                                     'I<sub>sz.BB(2)</sub>',
+                                     frac('K<sub>ots</sub>', 'K<sub>tok</sub>') + f' &middot; (I<sub>sz.SV</sub> + I<sub>rab.own.max</sub>) = ' +
+                                     frac(f'{state.inc_k_ots}', f'{state.inc_k_tok}') + f' &middot; ({state.inc_i_sz_sv} + {state.inc_i_rab_own_max})',
+                                     f'{i_sz_bb2:.1f}', 'A')
+
+                            # Step 3: Final Pickup
+                            math_step('3. Final Pickup Current',
+                                     'I<sub>sz.BB</sub>',
+                                     f'max({i_sz_bb1:.1f}, {i_sz_bb2:.1f})',
+                                     f'{i_sz_bb:.1f}', 'A')
+
+                            # Step 4: Time Delay
+                            math_step('4. Time Delay Coordination',
+                                     't<sub>sz.BB</sub>',
+                                     f't<sub>sz.SV</sub> + &Delta;t = {state.inc_t_sz_sv} + {state.inc_delta_t}',
+                                     f'{t_sz_bb:.2f}', 's')
+
+                    # Sensitivity Check
+                    with ui.expansion('Sensitivity Analysis', icon='security').classes('w-full bg-white border'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('Sensitivity Coefficient',
+                                     'K<sub>s</sub>',
+                                     frac('&radic;3/2 &middot; I<sub>k.min</sub>', 'I<sub>sz.BB</sub>') + f' = ' +
+                                     frac(f'0.866 &middot; {state.inc_i_k_min}', f'{i_sz_bb:.1f}'),
+                                     f'{k_s_inc:.2f}')
+                            
+                            if k_s_inc >= 1.5:
+                                ui.label('✅ Sensitivity confirmed (Ks ≥ 1.5)').classes('text-green-600 font-bold')
+                            else:
+                                ui.label('❌ Sensitivity insufficient (Ks < 1.5)').classes('text-red-600 font-bold')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('bolt', size='64px').classes('text-slate-300')
+                    ui.label('Enter load and coordination data then click Calculate').classes('text-slate-400 mt-4')
+
+
+# --- Main Layout ---
+@ui.refreshable
+def content():
+    if state.current_tool == "transformer":
+        transformer_protection_page()
+    elif state.current_tool == "generator":
+        generator_protection_page()
+    elif state.current_tool == "selectivity":
+        selectivity_page()
+    elif state.current_tool == "cable":
+        cable_page()
+    elif state.current_tool == "sc_generator":
+        sc_generator_page()
+    elif state.current_tool == "earthing":
+        earthing_page()
+    elif state.current_tool == "incomer":
+        incomer_protection_page()
+
     else:
-        c_max = st.sidebar.number_input("c_max", value=1.10, step=0.01)
-        c_min = st.sidebar.number_input("c_min", value=1.00, step=0.01)
+        with ui.column().classes('w-full items-center p-20'):
+            ui.label(f'{state.current_tool} Module').classes('text-3xl font-bold text-slate-300')
+            ui.label('Module implementation in progress...').classes('text-slate-400')
 
-    fault_locations = st.sidebar.multiselect(
-        "Fault Location(s)",
-        ["Generator Terminals (LV Bus)", "HV Bus (after step-up transformer)"],
-        default=["Generator Terminals (LV Bus)"]
-    )
-    fault_types = st.sidebar.multiselect(
-        "Fault Type(s)",
-        ["3-phase (I\"k3)", "2-phase (I\"k2)", "1-phase (I\"k1)"],
-        default=["3-phase (I\"k3)", "2-phase (I\"k2)"]
-    )
+with ui.header(elevated=True).style('background-color: white; color: #333;').classes('items-center px-4'):
+    ui.button(on_click=lambda: left_drawer.toggle(), icon='menu').props('flat color=black')
+    ui.label('ENGINEERING TOOLS').classes('font-bold text-lg tracking-widest')
+    ui.space()
+    ui.label('v2.0 (NiceGUI)').classes('text-xs text-slate-400')
 
-    # Step-up transformer
-    need_trafo = "HV Bus (after step-up transformer)" in fault_locations
-    if need_trafo:
-        st.sidebar.header("Step-Up Transformer Data")
-        s_T     = st.sidebar.number_input("Transformer Rating S_T (MVA)", value=100.0, step=1.0, min_value=0.1)
-        u_T_lv  = st.sidebar.number_input("LV Voltage U_T_LV (kV)", value=11.0, step=0.1, min_value=0.1)
-        u_T_hv  = st.sidebar.number_input("HV Voltage U_T_HV (kV)", value=110.0, step=1.0, min_value=0.1)
-        u_k_pct = st.sidebar.number_input("Short-Circuit Voltage u_k (%)", value=10.0, step=0.1, min_value=0.1)
-        p_k_kw  = st.sidebar.number_input("Short-Circuit Losses P_k (kW)", value=200.0, step=10.0, min_value=0.0)
-    else:
-        s_T = u_T_lv = u_T_hv = u_k_pct = p_k_kw = None
+with ui.left_drawer(value=True, bordered=True).classes('bg-white w-72') as left_drawer:
+    with ui.column().classes('w-full p-4 items-center'):
+        ui.icon('bolt', size='48px').classes('text-red-600')
+        ui.label('RELAY CALCULATOR').classes('font-bold text-slate-800 tracking-tighter')
+    
+    ui.separator()
+    ui.label('PROTECTION MODULES').classes('text-[10px] font-bold text-slate-400 p-4 pb-0 tracking-widest')
+    
+    def set_tool(tool_id):
+        state.current_tool = tool_id
+        reset_calc()
 
-    # Zero-sequence (optional, for 1-phase fault)
-    need_z0 = "1-phase (I\"k1)" in fault_types
-    has_z0 = False
-    z0_r = z0_x = 0.0
-    if need_z0:
-        st.sidebar.header("Zero-Sequence Impedance Z0 (Optional)")
-        st.sidebar.caption("Leave both at 0 to skip single-phase calculation.")
-        z0_r = st.sidebar.number_input("R0 (Ω)", value=0.0, step=0.01, format="%.4f")
-        z0_x = st.sidebar.number_input("X0 (Ω)", value=0.0, step=0.01, format="%.4f")
-        has_z0 = (z0_r != 0.0 or z0_x != 0.0)
+    modules = [
+        ("transformer", "Transformer", "(ANSI 51)", "transformer"),
+        ("generator", "Generator", "(ANSI 67)", "power"),
+        ("selectivity", "Selectivity", "ANALYSIS", "analytics"),
+        ("cable", "Cable Sizing", "IEC/BS", "electrical_services"),
+        ("sc_generator", "SC Generator", "(IEC 60909)", "settings_input_component"),
+        ("earthing", "Earthing", "(IEEE 80)", "public"),
+        ("incomer", "Incomer", "(ANSI 67)", "vpn_key")
+    ]
+    
+    for tool_id, name, standard, icon in modules:
+        is_active = state.current_tool == tool_id
+        with ui.button(on_click=lambda t=tool_id: set_tool(t)) \
+            .props('flat') \
+            .classes('nav-button px-4') \
+            .classes('nav-button-active' if is_active else 'text-slate-600'):
+            with ui.row().classes('w-full items-center justify-between no-wrap'):
+                with ui.row().classes('items-center gap-3 no-wrap'):
+                    ui.icon(icon, size='20px')
+                    ui.label(name).classes('nav-label')
+                ui.label(standard).classes('nav-standard')
 
-    st.sidebar.header("Thermal Calculation")
-    t_k = st.sidebar.number_input("Fault Duration T_k (s)", value=1.0, step=0.05, min_value=0.01)
 
-    if st.button("🚀 Calculate Short-Circuit Currents", type="primary", key="sc_iec_btn", use_container_width=True):
-        st.session_state.calc_triggered = True
+content()
 
-    if st.session_state.calc_triggered:
-        if not fault_locations:
-            st.error("Please select at least one fault location in the sidebar.")
-            st.stop()
-
-        # ── Core calculations ────────────────────────────────────
-        sin_phi_G = math.sqrt(max(1 - cos_phi_G**2, 0))
-        omega     = 2 * math.pi * freq
-
-        # Generator base impedance  [Ω]
-        z_base   = (u_rG ** 2) / s_n           # kV² / MVA = Ω
-        x_d_ohm  = x_d_pu * z_base
-        r_a_ohm  = r_a_pu * z_base
-
-        # Correction factor K_G  (IEC 60909-0 §4.6.3, Eq. 18)
-        denom_KG = 1 + x_d_pu * sin_phi_G
-        K_G = (u_n / u_rG) * (c_max / denom_KG)
-
-        # Corrected generator impedance  [Ω]
-        r_GK = K_G * r_a_ohm
-        x_GK = K_G * x_d_ohm
-        z_GK = math.sqrt(r_GK**2 + x_GK**2)
-
-        # ── Helper: peak factor & thermal ───────────────────────
-        def peak_factor(r, x):
-            rX = r / x if x > 0 else 0
-            return 1.02 + 0.98 * math.exp(-3 * rX)
-
-        def thermal_factor(kappa, r, x, tk):
-            """Returns m (DC heat factor). n=1 assumed. IEC 60909-0 §4.5."""
-            tau_dc = x / (omega * r) if r > 0 else 1e6
-            if tau_dc < 1e5 and tk > 0:
-                m = kappa**2 * (tau_dc / (2 * tk)) * (1 - math.exp(-2 * tk / tau_dc))
-            else:
-                m = kappa**2  # conservative
-            return m
-
-        # ── Results container ────────────────────────────────────
-        results = {}
-
-        # ── A: Generator Terminals ───────────────────────────────
-        if "Generator Terminals (LV Bus)" in fault_locations:
-            kap_G   = peak_factor(r_GK, x_GK)
-            ik3_G   = (c_max * u_rG * 1e3) / (math.sqrt(3) * z_GK) / 1e3   # kA
-            ik2_G   = (math.sqrt(3) / 2) * ik3_G
-            ip_G    = kap_G * math.sqrt(2) * ik3_G
-            m_G     = thermal_factor(kap_G, r_GK, x_GK, t_k)
-            ith_G   = ik3_G * math.sqrt(m_G + 1)
-
-            if need_z0 and has_z0:
-                z_seq_r = 2 * r_GK + z0_r
-                z_seq_x = 2 * x_GK + z0_x
-                z_seq   = math.sqrt(z_seq_r**2 + z_seq_x**2)
-                ik1_G   = (math.sqrt(3) * c_max * u_rG * 1e3) / z_seq / 1e3
-            else:
-                ik1_G   = None
-
-            results["gen"] = dict(label="Generator Terminals", u_n=u_rG,
-                                  kap=kap_G, ik3=ik3_G, ik2=ik2_G,
-                                  ip=ip_G, ik1=ik1_G, ith=ith_G, m=m_G)
-
-        # ── B: HV Bus ────────────────────────────────────────────
-        if need_trafo:
-            # Transformer impedance referred to HV  [Ω]
-            z_T_base_hv = (u_T_hv**2) / s_T
-            z_T_hv      = (u_k_pct / 100) * z_T_base_hv
-            r_T_pu      = (p_k_kw * 1e3) / (s_T * 1e6)
-            r_T_hv      = r_T_pu * z_T_base_hv
-            x_T_hv      = math.sqrt(max(z_T_hv**2 - r_T_hv**2, 0))
-
-            # Generator impedance referred to HV via turns ratio
-            n_ratio  = u_T_hv / u_T_lv
-            r_GK_hv  = r_GK * n_ratio**2
-            x_GK_hv  = x_GK * n_ratio**2
-
-            # Total
-            r_tot_hv = r_GK_hv + r_T_hv
-            x_tot_hv = x_GK_hv + x_T_hv
-            z_tot_hv = math.sqrt(r_tot_hv**2 + x_tot_hv**2)
-
-            kap_HV  = peak_factor(r_tot_hv, x_tot_hv)
-            ik3_HV  = (c_max * u_T_hv * 1e3) / (math.sqrt(3) * z_tot_hv) / 1e3
-            ik2_HV  = (math.sqrt(3) / 2) * ik3_HV
-            ip_HV   = kap_HV * math.sqrt(2) * ik3_HV
-            m_HV    = thermal_factor(kap_HV, r_tot_hv, x_tot_hv, t_k)
-            ith_HV  = ik3_HV * math.sqrt(m_HV + 1)
-
-            if need_z0 and has_z0:
-                z_seq_r_hv = 2 * r_tot_hv + z0_r * n_ratio**2
-                z_seq_x_hv = 2 * x_tot_hv + z0_x * n_ratio**2
-                z_seq_hv   = math.sqrt(z_seq_r_hv**2 + z_seq_x_hv**2)
-                ik1_HV     = (math.sqrt(3) * c_max * u_T_hv * 1e3) / z_seq_hv / 1e3
-            else:
-                ik1_HV     = None
-
-            results["hv"] = dict(label=f"HV Bus ({u_T_hv} kV)", u_n=u_T_hv,
-                                 kap=kap_HV, ik3=ik3_HV, ik2=ik2_HV,
-                                 ip=ip_HV, ik1=ik1_HV, ith=ith_HV, m=m_HV,
-                                 r_T=r_T_hv, x_T=x_T_hv, z_T=z_T_hv,
-                                 r_tot=r_tot_hv, x_tot=x_tot_hv, z_tot=z_tot_hv)
-
-        # ── Step-by-step impedance derivation ───────────────────
-        with st.expander("Step 1 — Generator Impedance & K_G Correction", expanded=True):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.subheader("Base Impedance")
-                st.latex(r"Z_{base} = \frac{U_{rG}^2}{S_n}")
-                st.info(f"Z_base = {u_rG}² / {s_n} = **{z_base:.4f} Ω**")
-                st.subheader("Subtransient Impedance (Ω)")
-                st.latex(r"X''_d = x''_d \cdot Z_{base}, \quad R_a = r_a \cdot Z_{base}")
-                st.info(f"X\"d = {x_d_pu} × {z_base:.4f} = **{x_d_ohm:.4f} Ω**")
-                st.info(f"R_a  = {r_a_pu} × {z_base:.4f} = **{r_a_ohm:.4f} Ω**")
-            with col_b:
-                st.subheader("Correction Factor K_G  (IEC 60909-0 Eq. 18)")
-                st.latex(r"K_G = \frac{U_n}{U_{rG}} \cdot \frac{c_{max}}{1 + x''_d \cdot \sin\varphi_G}")
-                st.success(f"sin φ_G = {sin_phi_G:.4f}")
-                st.success(f"K_G = ({u_n}/{u_rG}) × {c_max} / {denom_KG:.4f} = **{K_G:.4f}**")
-                st.subheader("Corrected Generator Impedance")
-                st.latex(r"Z_{GK} = K_G \cdot Z_G")
-                st.warning(f"R_GK = {r_GK:.4f} Ω | X_GK = {x_GK:.4f} Ω | Z_GK = **{z_GK:.4f} Ω**")
-
-        if need_trafo and "hv" in results:
-            hv = results["hv"]
-            with st.expander("Step 2 — Step-Up Transformer Impedance (HV side)", expanded=True):
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.subheader("Transformer Z_T")
-                    st.latex(r"Z_T = \frac{u_k\%}{100} \cdot \frac{U_{T,HV}^2}{S_T}")
-                    st.info(f"Z_T = {u_k_pct/100} × {u_T_hv}²/{s_T} = **{hv['z_T']:.4f} Ω**")
-                    st.info(f"R_T = **{hv['r_T']:.4f} Ω** | X_T = **{hv['x_T']:.4f} Ω**")
-                with col_b:
-                    st.subheader("Total Impedance at HV Bus")
-                    st.latex(r"Z_{tot} = Z_{GK,HV} + Z_T")
-                    st.warning(f"n = {u_T_hv}/{u_T_lv} = {u_T_hv/u_T_lv:.4f}")
-                    st.warning(f"R_tot = **{hv['r_tot']:.4f} Ω** | X_tot = **{hv['x_tot']:.4f} Ω** | Z_tot = **{hv['z_tot']:.4f} Ω**")
-
-        # ── Results per fault location ───────────────────────────
-        st.header("Short-Circuit Current Results")
-        loc_cols = st.columns(len(results))
-
-        for col_idx, (key, r) in enumerate(results.items()):
-            with loc_cols[col_idx]:
-                st.subheader(f"📍 {r['label']}")
-                st.markdown(f"*U_n = {r['u_n']} kV | κ = {r['kap']:.3f}*")
-
-                show_3ph = "3-phase (I\"k3)" in fault_types
-                show_2ph = "2-phase (I\"k2)" in fault_types
-                show_1ph = "1-phase (I\"k1)" in fault_types
-
-                if show_3ph:
-                    st.metric("I\"k3 — 3-phase SC", f"{r['ik3']:.3f} kA")
-                if show_2ph:
-                    st.metric("I\"k2 — Line-to-line SC", f"{r['ik2']:.3f} kA")
-                if show_1ph:
-                    if r['ik1'] is not None:
-                        st.metric("I\"k1 — Single-phase SC", f"{r['ik1']:.3f} kA")
-                    else:
-                        st.info("I\"k1 skipped — Z0 not provided")
-
-                st.metric("ip — Peak current", f"{r['ip']:.3f} kA")
-                st.metric("Ith — Thermal equiv. (Tk=" + f"{t_k}s)", f"{r['ith']:.3f} kA")
-
-        # ── Formula summary expander ─────────────────────────────
-        with st.expander("Formula Reference — IEC 60909-0", expanded=False):
-            st.markdown("**3-phase initial SC current:**")
-            st.latex(r"I''_{k3} = \frac{c \cdot U_n}{\sqrt{3} \cdot Z_{GK}}")
-            st.markdown("**2-phase SC current:**")
-            st.latex(r"I''_{k2} = \frac{\sqrt{3}}{2} \cdot I''_{k3}")
-            st.markdown("**1-phase SC current (Z0 required):**")
-            st.latex(r"I''_{k1} = \frac{\sqrt{3} \cdot c \cdot U_n}{Z_1 + Z_2 + Z_0}")
-            st.markdown("**Peak current:**")
-            st.latex(r"i_p = \kappa \cdot \sqrt{2} \cdot I''_{k3}, \quad \kappa = 1.02 + 0.98\,e^{-3R/X}")
-            st.markdown("**Thermal equivalent current:**")
-            st.latex(r"I_{th} = I''_{k3} \cdot \sqrt{m + n}, \quad n=1")
-            st.latex(r"m = \kappa^2 \cdot \frac{\tau_{DC}}{2T_k} \cdot \left(1 - e^{-2T_k/\tau_{DC}}\right), \quad \tau_{DC}=\frac{X}{\omega R}")
-
-# ─────────────────────────────────────────────────────────────────
-# EARTHING (GROUNDING) — IEEE Std 80-2013
-# ─────────────────────────────────────────────────────────────────
-elif tool == "Earthing (IEEE 80)":
-    st.title("🌍 Substation Earthing Design — IEEE Std 80-2013")
-    st.caption("IEEE Guide for Safety in AC Substation Grounding | Steps per Chapter 15 methodology")
-
-    # ── Sidebar ─────────────────────────────────────────────────
-    st.sidebar.header("System Fault Parameters")
-    u_sys      = st.sidebar.number_input("System Voltage (kV)", value=110.0, step=1.0, min_value=0.1)
-    If_sym     = st.sidebar.number_input("Symmetrical Fault Current If (A)", value=10000.0, step=100.0, min_value=1.0,
-                                          help="Rms value of symmetrical ground fault current (3I0)")
-    tf         = st.sidebar.number_input("Fault Duration tf (s)", value=0.5, step=0.05, min_value=0.01)
-    X_R        = st.sidebar.number_input("System X/R Ratio", value=10.0, step=0.5, min_value=0.1)
-    Sf         = st.sidebar.number_input("Fault Current Division Factor Sf", value=0.6, step=0.01,
-                                          min_value=0.01, max_value=1.0,
-                                          help="Sf = Ig / If — fraction of fault current flowing into earth grid")
-
-    st.sidebar.header("Soil & Grid Geometry")
-    rho_e      = st.sidebar.number_input("Soil Resistivity rho (Ohm.m)", value=100.0, step=5.0, min_value=1.0)
-    rho_s_e    = st.sidebar.number_input("Surface Layer Resistivity rho_s (Ohm.m)", value=2500.0, step=100.0, min_value=1.0)
-    hs_e       = st.sidebar.number_input("Surface Layer Thickness hs (m)", value=0.1, step=0.01, min_value=0.0)
-    h_e        = st.sidebar.number_input("Grid Burial Depth h (m)", value=0.5, step=0.05, min_value=0.01)
-    A_e        = st.sidebar.number_input("Grid Area A (m2)", value=3600.0, step=100.0, min_value=1.0)
-    Lx_e       = st.sidebar.number_input("Grid Length Lx (m)", value=60.0, step=1.0, min_value=1.0)
-    Ly_e       = st.sidebar.number_input("Grid Width Ly (m)", value=60.0, step=1.0, min_value=1.0)
-    Lc_e       = st.sidebar.number_input("Total Conductor Length Lc (m)", value=600.0, step=10.0, min_value=1.0)
-    Lr_e       = st.sidebar.number_input("Total Rod Length Lr (m)", value=0.0, step=1.0, min_value=0.0)
-    nx_e       = st.sidebar.number_input("Parallel Conductors X (nx)", value=7, step=1, min_value=1)
-    ny_e       = st.sidebar.number_input("Parallel Conductors Y (ny)", value=7, step=1, min_value=1)
-    d_cond_e   = st.sidebar.number_input("Conductor Diameter d (m)", value=0.01, step=0.001, min_value=0.001, format="%.3f")
-
-    st.sidebar.header("Body Safety Parameters")
-    body_weight_e = st.sidebar.selectbox("Body Weight (kg)", [50, 70], index=0)
-    ts_e          = st.sidebar.number_input("Shock Duration ts (s)", value=0.5, step=0.05, min_value=0.01)
-
-    st.sidebar.header("Conductor Material")
-    cond_mat_e = st.sidebar.selectbox("Material", ["Copper (soft-drawn)", "Copper (hard-drawn)", "Steel (galv.)"])
-    KF_MAP_E   = {"Copper (soft-drawn)": 7.06, "Copper (hard-drawn)": 7.06, "Steel (galv.)": 15.95}
-    Kf_e       = KF_MAP_E[cond_mat_e]
-    Ta_e       = st.sidebar.number_input("Ambient Temperature Ta (C)", value=40.0, step=1.0)
-
-    if st.button("Calculate Earthing System", type="primary", key="earth_btn", use_container_width=True):
-        st.session_state.calc_triggered = True
-
-    if st.session_state.calc_triggered:
-
-        # STEP 1: Decrement Factor
-        Ta_dc_e = X_R / (2 * math.pi * 50)
-        if Ta_dc_e > 0 and tf > 0:
-            Df_e = math.sqrt(1 + (Ta_dc_e / tf) * (1 - math.exp(-2 * tf / Ta_dc_e)))
-        else:
-            Df_e = 1.0
-
-        Ig_e = Sf * If_sym
-        IG_e = Df_e * Ig_e
-
-        with st.expander("Step 1 — Fault Current & Maximum Grid Current (IEEE 80 Eq. 68-70)", expanded=True):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.subheader("DC Time Constant")
-                st.latex(r"\tau_{DC} = \frac{X/R}{2\pi f}")
-                st.info(f"t_DC = {X_R}/(2p x 50) = **{Ta_dc_e:.4f} s**")
-            with c2:
-                st.subheader("Decrement Factor Df (Eq. 79)")
-                st.latex(r"D_f = \sqrt{1 + \frac{\tau_{DC}}{t_f}\left(1-e^{-2t_f/\tau_{DC}}\right)}")
-                st.success(f"Df = **{Df_e:.4f}**")
-            with c3:
-                st.subheader("Grid Currents (Eq. 69-70)")
-                st.latex(r"I_g = S_f \times I_f")
-                st.latex(r"I_G = D_f \times I_g")
-                st.warning(f"Ig (symmetrical) = **{Ig_e:.1f} A**")
-                st.error(f"IG (maximum) = **{IG_e:.1f} A**")
-
-        # STEP 2: Conductor Sizing
-        A_kcmil_e = (If_sym / 1000) * math.sqrt(tf) * Kf_e
-        A_mm2_e   = A_kcmil_e * 0.5067
-
-        with st.expander("Step 2 — Conductor Sizing (IEEE 80 Table 1)", expanded=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Minimum Cross-Section")
-                st.latex(r"A_{kcmil} = \frac{I_f}{1000}\sqrt{t_f} \cdot K_f")
-                st.info(f"Kf ({cond_mat_e}) = {Kf_e}")
-                st.warning(f"A = **{A_kcmil_e:.2f} kcmil = {A_mm2_e:.1f} mm2**")
-            with c2:
-                st.subheader("Recommendation")
-                st.markdown(f"- Fault current: **{If_sym:.0f} A**")
-                st.markdown(f"- Duration: **{tf} s**")
-                st.markdown(f"- Ambient: **{Ta_e} °C**")
-                st.success(f"Use conductor >= **{math.ceil(A_mm2_e)} mm2**")
-
-        # STEP 3: Ground Resistance
-        Lt_e = Lc_e + (1.55 + 1.22*(Lr_e / math.sqrt(Lx_e**2 + Ly_e**2)))*Lr_e if Lr_e > 0 else Lc_e
-        Rg_e = rho_e * (1/Lt_e + (1/math.sqrt(20*A_e)) * (1 + 1/(1 + h_e*math.sqrt(20/A_e))))
-
-        with st.expander("Step 3 — Ground Resistance Rg (IEEE 80 Eq. 53 - Sverak)", expanded=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Sverak Formula")
-                st.latex(r"R_g = \rho\left[\frac{1}{L_t}+\frac{1}{\sqrt{20A}}\left(1+\frac{1}{1+h\sqrt{20/A}}\right)\right]")
-                st.info(f"rho={rho_e} Ohm.m | Lt={Lt_e:.1f} m | A={A_e} m2 | h={h_e} m")
-            with c2:
-                st.metric("Ground Resistance Rg", f"{Rg_e:.4f} Ohm")
-
-        # STEP 4: GPR
-        GPR_e = IG_e * Rg_e
-
-        with st.expander("Step 4 — Ground Potential Rise GPR", expanded=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.latex(r"GPR = I_G \times R_g")
-                st.info(f"IG={IG_e:.1f} A | Rg={Rg_e:.4f} Ohm")
-            with c2:
-                st.metric("GPR", f"{GPR_e:.1f} V", f"{GPR_e/1000:.3f} kV")
-
-        # STEP 5: Tolerable Voltages
-        Cs_e = 1 - (0.09*(1 - rho_e/rho_s_e))/(2*hs_e + 0.09) if hs_e > 0 else 1.0
-        Cs_e = max(0.0, min(1.0, Cs_e))
-        Ib_e = (0.116 if body_weight_e == 50 else 0.157) / math.sqrt(ts_e)
-        Etouch_e = (1000 + 1.5 * Cs_e * rho_s_e) * Ib_e
-        Estep_e  = (1000 + 6.0 * Cs_e * rho_s_e) * Ib_e
-
-        with st.expander("Step 5 — Tolerable Touch & Step Voltages (IEEE 80 Eq. 29-32)", expanded=True):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.subheader("Reflection Factor Cs")
-                st.latex(r"C_s = 1 - \frac{0.09(1-\rho/\rho_s)}{2h_s + 0.09}")
-                st.success(f"Cs = **{Cs_e:.4f}**")
-            with c2:
-                st.subheader("Body Current Ib")
-                st.latex(r"I_b = \frac{0.116}{\sqrt{t_s}}\,(50\,kg)")
-                st.info(f"Ib = **{Ib_e:.4f} A**")
-            with c3:
-                st.subheader("Tolerable Voltages")
-                st.latex(r"E_{touch} = (1000+1.5C_s\rho_s)I_b")
-                st.latex(r"E_{step}  = (1000+6C_s\rho_s)I_b")
-                st.warning(f"Etouch = **{Etouch_e:.1f} V**")
-                st.warning(f"Estep  = **{Estep_e:.1f} V**")
-
-        # STEP 6: Mesh & Step Voltages
-        Dx_e = Lx_e / (nx_e - 1) if nx_e > 1 else Lx_e
-        Dy_e = Ly_e / (ny_e - 1) if ny_e > 1 else Ly_e
-        D_e  = (Dx_e + Dy_e) / 2.0
-        n_e  = math.sqrt(nx_e * ny_e)
-        Kh_e = math.sqrt(1 + h_e / 1.0)
-        try:
-            km_t1 = math.log(D_e**2 / (16*h_e*d_cond_e))
-            km_t2 = math.log((D_e + 2*h_e)**2 / (8*D_e*d_cond_e))
-            km_t3 = h_e / (4*d_cond_e)
-            km_t4 = (1/Kh_e) * math.log(8 / (math.pi*(2*n_e - 1)))
-            Km_e  = (1/(2*math.pi)) * (km_t1 + km_t2 - km_t3 + km_t4)
-        except (ValueError, ZeroDivisionError):
-            Km_e = 0.5
-        try:
-            Ks_e = (1/math.pi) * (1/(2*h_e) + 1/(D_e+h_e) + (1/D_e)*(1 - 0.5**(n_e-2)))
-        except ZeroDivisionError:
-            Ks_e = 0.1
-        Ki_e  = 0.644 + 0.148 * n_e
-        Lm_e  = Lc_e + 1.55*Lr_e if Lr_e > 0 else Lc_e
-        Ls_e  = 0.75*Lc_e + 0.85*Lr_e if Lr_e > 0 else 0.75*Lc_e
-        Em_e  = rho_e * IG_e * Km_e * Ki_e / Lm_e if Lm_e > 0 else 0
-        Es_e  = rho_e * IG_e * Ks_e * Ki_e / Ls_e if Ls_e > 0 else 0
-
-        with st.expander("Step 6 — Mesh & Step Voltages (IEEE 80 Eq. 80-94)", expanded=True):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.subheader("Geometric Factors")
-                st.markdown(f"- Avg mesh spacing D = **{D_e:.2f} m**")
-                st.markdown(f"- n (geometric mean) = **{n_e:.2f}**")
-                st.markdown(f"- Km = **{Km_e:.4f}** | Ks = **{Ks_e:.4f}** | Ki = **{Ki_e:.4f}**")
-                st.markdown(f"- Lm = **{Lm_e:.1f} m** | Ls = **{Ls_e:.1f} m**")
-            with c2:
-                st.subheader("Voltages")
-                st.latex(r"E_m = \frac{\rho \cdot I_G \cdot K_m \cdot K_i}{L_m}")
-                st.latex(r"E_s = \frac{\rho \cdot I_G \cdot K_s \cdot K_i}{L_s}")
-                st.error(f"Em = **{Em_e:.1f} V**")
-                st.error(f"Es = **{Es_e:.1f} V**")
-
-        # STEP 7: Safety Summary
-        touch_ok_e = Em_e <= Etouch_e
-        step_ok_e  = Es_e <= Estep_e
-
-        st.header("Safety Verification Summary")
-        mc1, mc2, mc3, mc4 = st.columns(4)
-        mc1.metric("Max Grid Current IG", f"{IG_e:.0f} A")
-        mc2.metric("Ground Resistance Rg", f"{Rg_e:.4f} Ohm")
-        mc3.metric("GPR", f"{GPR_e:.0f} V")
-        mc4.metric("Min Conductor", f">= {math.ceil(A_mm2_e)} mm2")
-        st.markdown("---")
-
-        rc1, rc2 = st.columns(2)
-        with rc1:
-            st.markdown("### Touch Voltage Check")
-            if touch_ok_e:
-                st.success(f"PASS — Em ({Em_e:.1f} V) <= Etouch ({Etouch_e:.1f} V)")
-            else:
-                st.error(f"FAIL — Em ({Em_e:.1f} V) > Etouch ({Etouch_e:.1f} V)")
-                st.warning("Action: Increase conductor density or add surface layer.")
-        with rc2:
-            st.markdown("### Step Voltage Check")
-            if step_ok_e:
-                st.success(f"PASS — Es ({Es_e:.1f} V) <= Estep ({Estep_e:.1f} V)")
-            else:
-                st.error(f"FAIL — Es ({Es_e:.1f} V) > Estep ({Estep_e:.1f} V)")
-                st.warning("Action: Increase burial depth or surface layer thickness.")
-
-        with st.expander("Full Results Table", expanded=False):
-            df_res = pd.DataFrame({
-                "Parameter": ["If (symmetrical)","DC Time Constant","Decrement Factor Df",
-                               "Ig (symmetrical grid)","IG (maximum grid)","Ground Resistance Rg",
-                               "GPR","Reflection Factor Cs","Etouch allowable","Estep allowable",
-                               "Em (mesh voltage)","Es (step voltage)","Min Conductor Size"],
-                "Value": [f"{If_sym:.0f} A", f"{Ta_dc_e:.4f} s", f"{Df_e:.4f}",
-                          f"{Ig_e:.1f} A", f"{IG_e:.1f} A", f"{Rg_e:.4f} Ohm",
-                          f"{GPR_e:.1f} V", f"{Cs_e:.4f}", f"{Etouch_e:.1f} V",
-                          f"{Estep_e:.1f} V", f"{Em_e:.1f} V", f"{Es_e:.1f} V",
-                          f">= {math.ceil(A_mm2_e)} mm2"],
-                "Status": ["—","—","—","—","—","—","—","—","—","—",
-                           "PASS" if touch_ok_e else "FAIL",
-                           "PASS" if step_ok_e  else "FAIL","—"],
-            })
-            st.dataframe(df_res, use_container_width=True, hide_index=True)
-
-        with st.expander("Formula Reference — IEEE Std 80-2013", expanded=False):
-            st.markdown("**Fault Current Division (Eq. 68-70):**")
-            st.latex(r"S_f = \frac{I_g}{3I_0}\;;\quad I_g = S_f \cdot I_f\;;\quad I_G = D_f \cdot I_g")
-            st.markdown("**Decrement Factor (Eq. 79):**")
-            st.latex(r"D_f = \sqrt{1 + \frac{\tau_{DC}}{t_f}\left(1 - e^{-2t_f/\tau_{DC}}\right)}")
-            st.markdown("**Ground Resistance — Sverak (Eq. 53):**")
-            st.latex(r"R_g = \rho\left[\frac{1}{L_t}+\frac{1}{\sqrt{20A}}\left(1+\frac{1}{1+h\sqrt{20/A}}\right)\right]")
-            st.markdown("**Tolerable Touch & Step Voltages (Eq. 29-32):**")
-            st.latex(r"E_{touch50} = (1000 + 1.5\,C_s\rho_s)\frac{0.116}{\sqrt{t_s}}")
-            st.latex(r"E_{step50}  = (1000 + 6\,C_s\rho_s)\frac{0.116}{\sqrt{t_s}}")
-            st.markdown("**Mesh & Step Voltages (Eq. 80-94):**")
-            st.markdown("**Mesh & Step Voltages (Eq. 80-94):**")
-
-            st.latex(r"E_m = \frac{\rho \cdot I_G \cdot K_m \cdot K_i}{L_m}\;;\quad E_s = \frac{\rho \cdot I_G \cdot K_s \cdot K_i}{L_s}")
-            st.latex(r"E_m = \frac{\rho \cdot I_G \cdot K_m \cdot K_i}{L_m}\;;\quad E_s = \frac{\rho \cdot I_G \cdot K_s \cdot K_i}{L_s}")
+ui.run(title='Engineering Tool', port=8080, dark=False)
