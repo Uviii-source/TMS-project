@@ -116,6 +116,15 @@ class AppState:
         self.t_t_op = 0.5
         self.t_manual_start = False
         self.t_manual_val = 1.0
+        self.t_method = "Methodic 1"
+        self.t_time_mode = "Inverse Time (TMS)"
+        self.t_t_sz_def = 0.5  # Defined time delay
+        
+        # Transformer Methodic 2 coefficients
+        self.t_m2_k_n_load = 1.2
+        self.t_m2_k_n_ats = 1.1
+        self.t_m2_k_szp = 4.0
+        self.t_m2_k_n_sel = 1.1
 
         # Generator Inputs
         self.g_i_nom_g = 2000.0
@@ -202,6 +211,19 @@ class AppState:
         self.inc_k_otv = 1.5
         self.inc_k_tok = 1.0
         self.inc_delta_t = 0.3
+        self.inc_method = "Methodic 1"
+        self.inc_time_mode = "Defined Time"
+        
+        # Incomer Methodic 2 coefficients
+        self.inc_m2_k_n_load = 1.2
+        self.inc_m2_k_n_ats = 1.1
+        self.inc_m2_k_szp = 4.0
+        self.inc_m2_k_n_sel = 1.1
+        
+        # Incomer Inverse Time parameters
+        self.inc_curve_type = "IEC Normal Inverse"
+        self.inc_i_sc = 2000.0
+        self.inc_t_op = 0.5
 
 state = AppState()
 
@@ -236,6 +258,16 @@ def transformer_protection_page():
     with ui.row().classes('w-full no-wrap'):
         # Sidebar-like input panel
         with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('METHODOLOGY').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.select(["Methodic 1", "Methodic 2"], 
+                      value=state.t_method, 
+                      on_change=lambda e: (setattr(state, 't_method', e.value), content.refresh())).classes('w-full mb-4')
+
+            ui.label('TIME MODE').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.select(["Defined Time", "Inverse Time (TMS)"], 
+                      value=state.t_time_mode, 
+                      on_change=lambda e: (setattr(state, 't_time_mode', e.value), content.refresh())).classes('w-full mb-4')
+
             ui.label('TRANSFORMER DATA').classes('text-xs font-bold text-slate-400 mb-2')
             ui.number('S_nom (kVA)', value=state.t_s_nom, on_change=lambda e: setattr(state, 't_s_nom', e.value)).classes('w-full')
             ui.number('U_nom (kV)', value=state.t_u_nom, on_change=lambda e: setattr(state, 't_u_nom', e.value)).classes('w-full')
@@ -244,19 +276,29 @@ def transformer_protection_page():
             ui.number('CT Primary (A)', value=state.t_ct_primary, on_change=lambda e: setattr(state, 't_ct_primary', e.value)).classes('w-full')
             ui.select([5, 1], label='CT Secondary (A)', value=state.t_ct_secondary, on_change=lambda e: setattr(state, 't_ct_secondary', e.value)).classes('w-full')
             
-            ui.label('MTZ COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
-            ui.number('K_ots', value=state.t_k_ots, step=0.1, on_change=lambda e: setattr(state, 't_k_ots', e.value)).classes('w-full')
-            ui.number('K_szp', value=state.t_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_k_szp', e.value)).classes('w-full')
+            ui.label('COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
             ui.number('K_v', value=state.t_k_v, step=0.01, on_change=lambda e: setattr(state, 't_k_v', e.value)).classes('w-full')
             ui.number('K_per', value=state.t_k_per, step=0.1, on_change=lambda e: setattr(state, 't_k_per', e.value)).classes('w-full')
+
+            if state.t_method == "Methodic 1":
+                ui.number('K_ots', value=state.t_k_ots, step=0.1, on_change=lambda e: setattr(state, 't_k_ots', e.value)).classes('w-full')
+                ui.number('K_szp', value=state.t_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_k_szp', e.value)).classes('w-full')
+            else:
+                ui.number('k_n (Load)', value=state.t_m2_k_n_load, step=0.1, on_change=lambda e: setattr(state, 't_m2_k_n_load', e.value)).classes('w-full')
+                ui.number('k_n (ATS)', value=state.t_m2_k_n_ats, step=0.1, on_change=lambda e: setattr(state, 't_m2_k_n_ats', e.value)).classes('w-full')
+                ui.number('k_szp (ATS)', value=state.t_m2_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_m2_k_szp', e.value)).classes('w-full')
             
             ui.label('SENSITIVITY').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
             ui.number('Min SC Current (A)', value=state.t_i_kz_min, step=50, on_change=lambda e: setattr(state, 't_i_kz_min', e.value)).classes('w-full')
             
-            ui.label('TIME DELAY (TMS)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
-            ui.select(list(CURVES.keys()), label='Curve Type', value=state.t_curve_type, on_change=lambda e: setattr(state, 't_curve_type', e.value)).classes('w-full')
-            ui.number('I_sc (A)', value=state.t_i_sc, step=100, on_change=lambda e: setattr(state, 't_i_sc', e.value)).classes('w-full')
-            ui.number('Req. Time (s)', value=state.t_t_op, step=0.1, on_change=lambda e: setattr(state, 't_t_op', e.value)).classes('w-full')
+            if state.t_time_mode == "Inverse Time (TMS)":
+                ui.label('TIME DELAY (TMS)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+                ui.select(list(CURVES.keys()), label='Curve Type', value=state.t_curve_type, on_change=lambda e: setattr(state, 't_curve_type', e.value)).classes('w-full')
+                ui.number('I_sc (A)', value=state.t_i_sc, step=100, on_change=lambda e: setattr(state, 't_i_sc', e.value)).classes('w-full')
+                ui.number('Req. Time (s)', value=state.t_t_op, step=0.1, on_change=lambda e: setattr(state, 't_t_op', e.value)).classes('w-full')
+            else:
+                ui.label('TIME DELAY (DEFINED)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+                ui.number('Time Delay (s)', value=state.t_t_sz_def, step=0.1, on_change=lambda e: setattr(state, 't_t_sz_def', e.value)).classes('w-full')
             
             ui.checkbox('Manual Start Value', value=state.t_manual_start, on_change=lambda e: setattr(state, 't_manual_start', e.value)).classes('mt-4')
             if state.t_manual_start:
@@ -269,10 +311,19 @@ def transformer_protection_page():
             ui.label('Transformer Protection Settings (ANSI 51)').classes('text-2xl font-bold text-slate-800 mb-6')
             
             if state.calc_triggered:
-                # Calculations
+                # Common Calculations
                 i_nom = state.t_s_nom / (1.732 * state.t_u_nom)
                 i_rab_max = i_nom * state.t_k_per
-                i_szp = (state.t_k_ots * state.t_k_szp / state.t_k_v) * i_rab_max
+                
+                if state.t_method == "Methodic 1":
+                    i_szp = (state.t_k_ots * state.t_k_szp / state.t_k_v) * i_rab_max
+                    threshold = 1.5
+                else:
+                    i_szp1 = (state.t_m2_k_n_load / state.t_k_v) * i_rab_max
+                    i_szp2 = (state.t_m2_k_n_ats / state.t_k_v) * (i_rab_max) # Simplified
+                    i_szp = max(i_szp1, i_szp2)
+                    threshold = 1.2
+                
                 set_value = i_szp / state.t_ct_primary
                 
                 if state.t_manual_start:
@@ -285,11 +336,12 @@ def transformer_protection_page():
                 k_s = state.t_i_kz_min / i_pickup_actual
                 
                 tms_calc = None
-                if state.t_i_sc > i_pickup_actual:
-                    c = CURVES[state.t_curve_type]
-                    i_rel = state.t_i_sc / i_pickup_actual
-                    denominator = (c["A"] / ((i_rel ** c["c"]) - 1)) + c["B"]
-                    tms_calc = state.t_t_op / denominator
+                if state.t_time_mode == "Inverse Time (TMS)":
+                    if state.t_i_sc > i_pickup_actual:
+                        c = CURVES[state.t_curve_type]
+                        i_rel = state.t_i_sc / i_pickup_actual
+                        denominator = (c["A"] / ((i_rel ** c["c"]) - 1)) + c["B"]
+                        tms_calc = state.t_t_op / denominator
 
                 with ui.column().classes('w-full gap-4'):
                     # Results Summary Metrics
@@ -301,14 +353,20 @@ def transformer_protection_page():
                             ui.label('Start Value').classes('text-xs font-bold text-slate-400')
                             ui.label(f'{final_set_value:.3f} x In').classes('metric-value')
                         with ui.card().classes('flex-grow result-card'):
-                            ui.label('Sensitivity K_s').classes('text-xs font-bold text-slate-400')
+                            ui.label('Sensitivity Ks').classes('text-xs font-bold text-slate-400')
                             ui.label(f'{k_s:.2f}').classes('metric-value')
-                        with ui.card().classes('flex-grow result-card'):
-                            ui.label('TMS').classes('text-xs font-bold text-slate-400')
-                            ui.label(f'{tms_calc:.3f}' if tms_calc else 'N/A').classes('metric-value')
+                        
+                        if state.t_time_mode == "Inverse Time (TMS)":
+                            with ui.card().classes('flex-grow result-card'):
+                                ui.label('TMS').classes('text-xs font-bold text-slate-400')
+                                ui.label(f'{tms_calc:.3f}' if tms_calc else 'N/A').classes('metric-value')
+                        else:
+                            with ui.card().classes('flex-grow result-card'):
+                                ui.label('Time Delay').classes('text-xs font-bold text-slate-400')
+                                ui.label(f'{state.t_t_sz_def:.2f} s').classes('metric-value')
 
                     # Detailed Steps
-                    with ui.expansion('Step-by-Step Calculations', icon='calculate').classes('w-full bg-white border'):
+                    with ui.expansion('Step-by-Step Calculations', icon='calculate').classes('w-full bg-white border').props('value=True'):
                         with ui.column().classes('w-full p-4'):
                             math_step('1. Nominal Current',
                                      'I<sub>nom</sub>',
@@ -320,15 +378,31 @@ def transformer_protection_page():
                                      f'{i_nom:.2f} &middot; K<sub>per</sub> = {i_nom:.2f} &middot; {state.t_k_per}',
                                      f'{i_rab_max:.2f}', 'A')
 
-                            math_step('3. Protection Pickup Current',
-                                     'I<sub>szp</sub>',
-                                     frac(f'K<sub>ots</sub> &middot; K<sub>szp</sub>', 'K<sub>v</sub>') +
-                                     f' &middot; I<sub>rab.max</sub> = ' +
-                                     frac(f'{state.t_k_ots} &middot; {state.t_k_szp}', f'{state.t_k_v}') +
-                                     f' &middot; {i_rab_max:.2f}',
-                                     f'{i_szp:.2f}', 'A')
+                            if state.t_method == "Methodic 1":
+                                math_step('3. Protection Pickup Current',
+                                         'I<sub>szp</sub>',
+                                         frac(f'K<sub>ots</sub> &middot; K<sub>szp</sub>', 'K<sub>v</sub>') +
+                                         f' &middot; I<sub>rab.max</sub> = ' +
+                                         frac(f'{state.t_k_ots} &middot; {state.t_k_szp}', f'{state.t_k_v}') +
+                                         f' &middot; {i_rab_max:.2f}',
+                                         f'{i_szp:.2f}', 'A')
+                            else:
+                                math_step('3. Condition 1 (Load)',
+                                         'I<sub>szp(1)</sub>',
+                                         frac('k<sub>n</sub>', 'k<sub>v</sub>') + f' &middot; I<sub>rab.max</sub> = ' +
+                                         frac(f'{state.t_m2_k_n_load}', f'{state.t_k_v}') + f' &middot; {i_rab_max:.2f}',
+                                         f'{i_szp1:.2f}', 'A')
+                                math_step('4. Condition 2 (Self-start)',
+                                         'I<sub>szp(2)</sub>',
+                                         frac('k<sub>n</sub>', 'k<sub>v</sub>') + f' &middot; I<sub>rab.max</sub> = ' +
+                                         frac(f'{state.t_m2_k_n_ats}', f'{state.t_k_v}') + f' &middot; {i_rab_max:.2f}',
+                                         f'{i_szp2:.2f}', 'A')
+                                math_step('5. Final Pickup Current',
+                                         'I<sub>szp</sub>',
+                                         f'max({i_szp1:.2f}, {i_szp2:.2f})',
+                                         f'{i_szp:.2f}', 'A')
 
-                            math_step('4. Relay Start Value',
+                            math_step('Relay Start Value',
                                      'Start value',
                                      frac('I<sub>szp</sub>', 'CT<sub>primary</sub>') +
                                      f' = ' + frac(f'{i_szp:.2f}', f'{state.t_ct_primary}'),
@@ -341,12 +415,12 @@ def transformer_protection_page():
                                      frac('I<sub>kz.min</sub>', 'I<sub>pickup</sub>') +
                                      f' = ' + frac(f'{state.t_i_kz_min:.0f}', f'{i_pickup_actual:.2f}'),
                                      f'{k_s:.2f}')
-                        if k_s >= 1.5:
-                            ui.label('✅ Sensitivity confirmed (Ks ≥ 1.5)').classes('text-green-600 font-bold')
+                        if k_s >= threshold:
+                            ui.label(f'✅ Sensitivity confirmed (Ks ≥ {threshold})').classes('text-green-600 font-bold')
                         else:
-                            ui.label('❌ Sensitivity insufficient (Ks < 1.5)').classes('text-red-600 font-bold')
+                            ui.label(f'❌ Sensitivity insufficient (Ks < {threshold})').classes('text-red-600 font-bold')
 
-                    if tms_calc:
+                    if tms_calc and state.t_time_mode == "Inverse Time (TMS)":
                         with ui.expansion('Time Delay Analysis', icon='timer').classes('w-full bg-white border'):
                             ui.label(f'TMS = {tms_calc:.3f}').classes('font-bold')
                             ui.label('Expected operation time at multiples of pickup:').classes('text-slate-600 mt-2')
@@ -818,6 +892,16 @@ def incomer_protection_page():
     with ui.row().classes('w-full no-wrap'):
         # Sidebar for inputs
         with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('METHODOLOGY').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.select(["Methodic 1", "Methodic 2"], 
+                      value=state.inc_method, 
+                      on_change=lambda e: (setattr(state, 'inc_method', e.value), content.refresh())).classes('w-full mb-4')
+
+            ui.label('TIME MODE').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.select(["Defined Time", "Inverse Time (TMS)"], 
+                      value=state.inc_time_mode, 
+                      on_change=lambda e: (setattr(state, 'inc_time_mode', e.value), content.refresh())).classes('w-full mb-4')
+
             ui.label('LOAD DATA').classes('text-xs font-bold text-slate-400 mb-2')
             ui.number('I_rab.own.max (A)', value=state.inc_i_rab_own_max, on_change=lambda e: setattr(state, 'inc_i_rab_own_max', e.value)).classes('w-full')
             ui.number('I_rab.neighbor.max (A)', value=state.inc_i_rab_neighbor_max, on_change=lambda e: setattr(state, 'inc_i_rab_neighbor_max', e.value)).classes('w-full')
@@ -825,38 +909,66 @@ def incomer_protection_page():
             ui.label('COORDINATION (SV)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
             ui.number('I_sz.SV (A)', value=state.inc_i_sz_sv, on_change=lambda e: setattr(state, 'inc_i_sz_sv', e.value)).classes('w-full')
             ui.number('t_sz.SV (s)', value=state.inc_t_sz_sv, step=0.1, on_change=lambda e: setattr(state, 'inc_t_sz_sv', e.value)).classes('w-full')
-            ui.number('Delta t (s)', value=state.inc_delta_t, step=0.05, on_change=lambda e: setattr(state, 'inc_delta_t', e.value)).classes('w-full mt-2')
+            
+            if state.inc_time_mode == "Defined Time":
+                ui.label('TIME PARAMETERS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+                ui.number('Delta t (s)', value=state.inc_delta_t, step=0.05, on_change=lambda e: setattr(state, 'inc_delta_t', e.value)).classes('w-full mt-2')
 
             ui.label('FAULT & COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
             ui.number('Min SC (I_k.min) (A)', value=state.inc_i_k_min, on_change=lambda e: setattr(state, 'inc_i_k_min', e.value)).classes('w-full')
-            ui.number('K_szp', value=state.inc_k_szp, step=0.1, on_change=lambda e: setattr(state, 'inc_k_szp', e.value)).classes('w-full')
-            ui.number('K_ots', value=state.inc_k_ots, step=0.05, on_change=lambda e: setattr(state, 'inc_k_ots', e.value)).classes('w-full')
             ui.number('K_v', value=state.inc_k_v, step=0.005, on_change=lambda e: setattr(state, 'inc_k_v', e.value)).classes('w-full')
-            ui.number('K\'_otv', value=state.inc_k_otv, step=0.1, on_change=lambda e: setattr(state, 'inc_k_otv', e.value)).classes('w-full')
-            ui.number('K_tok', value=state.inc_k_tok, step=0.1, on_change=lambda e: setattr(state, 'inc_k_tok', e.value)).classes('w-full')
+
+            if state.inc_method == "Methodic 1":
+                ui.number('K_szp', value=state.inc_k_szp, step=0.1, on_change=lambda e: setattr(state, 'inc_k_szp', e.value)).classes('w-full')
+                ui.number('K_ots', value=state.inc_k_ots, step=0.05, on_change=lambda e: setattr(state, 'inc_k_ots', e.value)).classes('w-full')
+                ui.number('K\'_otv', value=state.inc_k_otv, step=0.1, on_change=lambda e: setattr(state, 'inc_k_otv', e.value)).classes('w-full')
+                ui.number('K_tok', value=state.inc_k_tok, step=0.1, on_change=lambda e: setattr(state, 'inc_k_tok', e.value)).classes('w-full')
+            else:
+                ui.label('MTZ COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+                ui.number('k_n (Load)', value=state.inc_m2_k_n_load, step=0.1, on_change=lambda e: setattr(state, 'inc_m2_k_n_load', e.value)).classes('w-full')
+                ui.number('k_n (ATS)', value=state.inc_m2_k_n_ats, step=0.1, on_change=lambda e: setattr(state, 'inc_m2_k_n_ats', e.value)).classes('w-full')
+                ui.number('k_szp (ATS)', value=state.inc_m2_k_szp, step=0.1, on_change=lambda e: setattr(state, 'inc_m2_k_szp', e.value)).classes('w-full')
+                ui.number('k_n (Selectivity)', value=state.inc_m2_k_n_sel, step=0.1, on_change=lambda e: setattr(state, 'inc_m2_k_n_sel', e.value)).classes('w-full')
+            
+            if state.inc_time_mode == "Inverse Time (TMS)":
+                ui.label('INVERSE TIME (TMS)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+                ui.select(list(CURVES.keys()), label='Curve Type', value=state.inc_curve_type, on_change=lambda e: setattr(state, 'inc_curve_type', e.value)).classes('w-full')
+                ui.number('I_sc (A)', value=state.inc_i_sc, step=100, on_change=lambda e: setattr(state, 'inc_i_sc', e.value)).classes('w-full')
+                ui.number('Req. Time (s)', value=state.inc_t_op, step=0.1, on_change=lambda e: setattr(state, 'inc_t_op', e.value)).classes('w-full')
 
             ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
 
         # Main content area
         with ui.column().classes('flex-grow p-8'):
-            ui.label('Incomer Protection Settings (ANSI 67)').classes('text-2xl font-bold text-slate-800 mb-6')
+            ui.label(f'Incomer Protection Settings (ANSI 67)').classes('text-2xl font-bold text-slate-800 mb-6')
             
             if state.calc_triggered:
-                # Calculations
-                # Condition 1: ATS overload and self-start
-                i_sz_bb1 = (state.inc_k_ots / state.inc_k_v) * (state.inc_k_szp * state.inc_i_rab_neighbor_max + state.inc_k_otv * state.inc_i_rab_own_max)
+                tms_inc = None
+                if state.inc_method == "Methodic 1":
+                    # M1 Calculations
+                    i_sz_bb1 = (state.inc_k_ots / state.inc_k_v) * (state.inc_k_szp * state.inc_i_rab_neighbor_max + state.inc_k_otv * state.inc_i_rab_own_max)
+                    i_sz_bb2 = (state.inc_k_ots / state.inc_k_tok) * (state.inc_i_sz_sv + state.inc_i_rab_own_max)
+                    i_sz_bb = max(i_sz_bb1, i_sz_bb2)
+                    threshold = 1.5
+                else:
+                    # M2 Calculations
+                    i_sz_bb1 = (state.inc_m2_k_n_load / state.inc_k_v) * state.inc_i_rab_own_max
+                    i_sz_bb2 = (state.inc_m2_k_n_ats / state.inc_k_v) * (state.inc_i_rab_own_max + state.inc_m2_k_szp * state.inc_i_rab_neighbor_max)
+                    i_sz_bb3 = state.inc_m2_k_n_sel * state.inc_i_sz_sv
+                    i_sz_bb = max(i_sz_bb1, i_sz_bb2, i_sz_bb3)
+                    threshold = 1.2
                 
-                # Condition 2: Selectivity with Section Switch (SV)
-                i_sz_bb2 = (state.inc_k_ots / state.inc_k_tok) * (state.inc_i_sz_sv + state.inc_i_rab_own_max)
-                
-                # Final Pickup
-                i_sz_bb = max(i_sz_bb1, i_sz_bb2)
-                
-                # Sensitivity
-                k_s_inc = (math.sqrt(3)/2 * state.inc_i_k_min) / i_sz_bb if i_sz_bb > 0 else 0
-                
-                # Time Delay
                 t_sz_bb = state.inc_t_sz_sv + state.inc_delta_t
+                
+                # Time Mode Logic
+                if state.inc_time_mode == "Inverse Time (TMS)":
+                    if state.inc_i_sc > i_sz_bb:
+                        c = CURVES[state.inc_curve_type]
+                        i_rel = state.inc_i_sc / i_sz_bb
+                        denominator = (c["A"] / ((i_rel ** c["c"]) - 1)) + c["B"]
+                        tms_inc = state.inc_t_op / denominator
+                
+                k_s_inc = (math.sqrt(3)/2 * state.inc_i_k_min) / i_sz_bb if i_sz_bb > 0 else 0
 
                 with ui.column().classes('w-full gap-4'):
                     # Metrics Row
@@ -864,44 +976,72 @@ def incomer_protection_page():
                         with ui.card().classes('flex-grow result-card'):
                             ui.label('I_pickup (Incomer)').classes('text-xs font-bold text-slate-400')
                             ui.label(f'{i_sz_bb:.1f} A').classes('metric-value')
-                        with ui.card().classes('flex-grow result-card'):
-                            ui.label('Time Delay (t_sz)').classes('text-xs font-bold text-slate-400')
-                            ui.label(f'{t_sz_bb:.2f} s').classes('metric-value')
+                        
+                        if state.inc_time_mode == "Inverse Time (TMS)":
+                            with ui.card().classes('flex-grow result-card'):
+                                ui.label('Calculated TMS').classes('text-xs font-bold text-slate-400')
+                                ui.label(f'{tms_inc:.3f}' if tms_inc else 'N/A').classes('metric-value')
+                        else:
+                            with ui.card().classes('flex-grow result-card'):
+                                ui.label('Time Delay (t_sz)').classes('text-xs font-bold text-slate-400')
+                                ui.label(f'{t_sz_bb:.2f} s').classes('metric-value')
+                        
                         with ui.card().classes('flex-grow result-card'):
                             ui.label('Sensitivity Ks').classes('text-xs font-bold text-slate-400')
                             ui.label(f'{k_s_inc:.2f}').classes('metric-value')
                         with ui.card().classes('flex-grow result-card'):
-                            ui.label('Directional').classes('text-xs font-bold text-slate-400')
-                            ui.label('Forward').classes('metric-value text-blue-600')
+                            ui.label('Min Ks Req.').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{threshold}').classes('metric-value text-slate-600')
 
                     # Detailed Steps
                     with ui.expansion('Step-by-Step Calculations', icon='calculate').classes('w-full bg-white border').props('value=True'):
                         with ui.column().classes('w-full p-4'):
-                            # Step 1: Condition 1
-                            math_step('1. Condition 1 (ATS Overload)',
-                                     'I<sub>sz.BB(1)</sub>',
-                                     frac('K<sub>ots</sub>', 'K<sub>v</sub>') + f' &middot; (K<sub>szp</sub> &middot; I<sub>rab.neighbor.max</sub> + K\'<sub>otv</sub> &middot; I<sub>rab.own.max</sub>) = ' +
-                                     frac(f'{state.inc_k_ots}', f'{state.inc_k_v}') + f' &middot; ({state.inc_k_szp} &middot; {state.inc_i_rab_neighbor_max} + {state.inc_k_otv} &middot; {state.inc_i_rab_own_max})',
-                                     f'{i_sz_bb1:.1f}', 'A')
+                            if state.inc_method == "Methodic 1":
+                                math_step('1. Condition 1 (ATS Overload)',
+                                         'I<sub>sz.BB(1)</sub>',
+                                         frac('K<sub>ots</sub>', 'K<sub>v</sub>') + f' &middot; (K<sub>szp</sub> &middot; I<sub>rab.neighbor.max</sub> + K\'<sub>otv</sub> &middot; I<sub>rab.own.max</sub>) = ' +
+                                         frac(f'{state.inc_k_ots}', f'{state.inc_k_v}') + f' &middot; ({state.inc_k_szp} &middot; {state.inc_i_rab_neighbor_max} + {state.inc_k_otv} &middot; {state.inc_i_rab_own_max})',
+                                         f'{i_sz_bb1:.1f}', 'A')
+                                math_step('2. Condition 2 (Selectivity with SV)',
+                                         'I<sub>sz.BB(2)</sub>',
+                                         frac('K<sub>ots</sub>', 'K<sub>tok</sub>') + f' &middot; (I<sub>sz.SV</sub> + I<sub>rab.own.max</sub>) = ' +
+                                         frac(f'{state.inc_k_ots}', f'{state.inc_k_tok}') + f' &middot; ({state.inc_i_sz_sv} + {state.inc_i_rab_own_max})',
+                                         f'{i_sz_bb2:.1f}', 'A')
+                                math_step('3. Final Pickup Current',
+                                         'I<sub>sz.BB</sub>',
+                                         f'max({i_sz_bb1:.1f}, {i_sz_bb2:.1f})',
+                                         f'{i_sz_bb:.1f}', 'A')
+                            else:
+                                math_step('1. Condition 1 (Load)',
+                                         'I<sub>sz.BB(1)</sub>',
+                                         frac('k<sub>n</sub>', 'k<sub>v</sub>') + f' &middot; I<sub>rab.max</sub> = ' +
+                                         frac(f'{state.inc_m2_k_n_load}', f'{state.inc_k_v}') + f' &middot; {state.inc_i_rab_own_max}',
+                                         f'{i_sz_bb1:.1f}', 'A')
+                                math_step('2. Condition 2 (Self-start with ATS)',
+                                         'I<sub>sz.BB(2)</sub>',
+                                         frac('k<sub>n</sub>', 'k<sub>v</sub>') + f' &middot; (I<sub>rab.max.1</sub> + k<sub>szp</sub> &middot; I<sub>rab.max.2</sub>) = ' +
+                                         frac(f'{state.inc_m2_k_n_ats}', f'{state.inc_k_v}') + f' &middot; ({state.inc_i_rab_own_max} + {state.inc_m2_k_szp} &middot; {state.inc_i_rab_neighbor_max})',
+                                         f'{i_sz_bb2:.1f}', 'A')
+                                math_step('3. Condition 3 (Selectivity with SV)',
+                                         'I<sub>sz.BB(3)</sub>',
+                                         f'k<sub>n</sub> &middot; I<sub>max.MTZ.SV</sub> = {state.inc_m2_k_n_sel} &middot; {state.inc_i_sz_sv}',
+                                         f'{i_sz_bb3:.1f}', 'A')
+                                math_step('4. Final Pickup Current',
+                                         'I<sub>sz.BB</sub>',
+                                         f'max({i_sz_bb1:.1f}, {i_sz_bb2:.1f}, {i_sz_bb3:.1f})',
+                                         f'{i_sz_bb:.1f}', 'A')
 
-                            # Step 2: Condition 2
-                            math_step('2. Condition 2 (Selectivity with SV)',
-                                     'I<sub>sz.BB(2)</sub>',
-                                     frac('K<sub>ots</sub>', 'K<sub>tok</sub>') + f' &middot; (I<sub>sz.SV</sub> + I<sub>rab.own.max</sub>) = ' +
-                                     frac(f'{state.inc_k_ots}', f'{state.inc_k_tok}') + f' &middot; ({state.inc_i_sz_sv} + {state.inc_i_rab_own_max})',
-                                     f'{i_sz_bb2:.1f}', 'A')
-
-                            # Step 3: Final Pickup
-                            math_step('3. Final Pickup Current',
-                                     'I<sub>sz.BB</sub>',
-                                     f'max({i_sz_bb1:.1f}, {i_sz_bb2:.1f})',
-                                     f'{i_sz_bb:.1f}', 'A')
-
-                            # Step 4: Time Delay
-                            math_step('4. Time Delay Coordination',
-                                     't<sub>sz.BB</sub>',
-                                     f't<sub>sz.SV</sub> + &Delta;t = {state.inc_t_sz_sv} + {state.inc_delta_t}',
-                                     f'{t_sz_bb:.2f}', 's')
+                            if state.inc_time_mode == "Inverse Time (TMS)":
+                                if tms_inc:
+                                    math_step('5. Time Multiplier Setting',
+                                             'TMS',
+                                             frac('t<sub>op</sub>', f'(A / ((I<sub>sc</sub>/I<sub>pickup</sub>)<sup>c</sup> - 1)) + B'),
+                                             f'{tms_inc:.3f}')
+                            else:
+                                math_step(f'4. Time Delay',
+                                         't<sub>sz.BB</sub>',
+                                         f't<sub>sz.SV</sub> + &Delta;t = {state.inc_t_sz_sv} + {state.inc_delta_t}',
+                                         f'{t_sz_bb:.2f}', 's')
 
                     # Sensitivity Check
                     with ui.expansion('Sensitivity Analysis', icon='security').classes('w-full bg-white border'):
@@ -912,10 +1052,10 @@ def incomer_protection_page():
                                      frac(f'0.866 &middot; {state.inc_i_k_min}', f'{i_sz_bb:.1f}'),
                                      f'{k_s_inc:.2f}')
                             
-                            if k_s_inc >= 1.5:
-                                ui.label('✅ Sensitivity confirmed (Ks ≥ 1.5)').classes('text-green-600 font-bold')
+                            if k_s_inc >= threshold:
+                                ui.label(f'✅ Sensitivity confirmed (Ks ≥ {threshold})').classes('text-green-600 font-bold')
                             else:
-                                ui.label('❌ Sensitivity insufficient (Ks < 1.5)').classes('text-red-600 font-bold')
+                                ui.label(f'❌ Sensitivity insufficient (Ks < {threshold})').classes('text-red-600 font-bold')
             else:
                 with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
                     ui.icon('bolt', size='64px').classes('text-slate-300')
