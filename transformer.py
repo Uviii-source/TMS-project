@@ -40,10 +40,10 @@ ui.add_head_html("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Lora:ital,wght@0,400;0,600;1,400&display=swap');
     body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
     .abb-header { background-color: #FF0000; height: 4px; width: 100%; position: fixed; top: 0; left: 0; z-index: 1000; }
-    .nav-button { justify-content: flex-start; text-align: left; width: 100%; letter-spacing: 0.3px; font-weight: 500; height: 44px; border-radius: 8px; margin-bottom: 4px; text-transform: none !important; }
-    .nav-button-active { background-color: rgba(255, 0, 0, 0.05) !important; color: #FF0000 !important; font-weight: 700; }
-    .nav-label { font-size: 0.85rem; }
-    .nav-standard { font-size: 0.7rem; font-weight: 700; opacity: 0.6; }
+    .nav-button { justify-content: flex-start; text-align: left; width: 100%; letter-spacing: 0.3px; font-weight: 500; height: 44px; border-radius: 8px; margin-bottom: 4px; text-transform: none !important; padding: 0 12px !important; overflow: hidden; }
+    .nav-button-active { background-color: rgba(255, 0, 0, 0.1) !important; color: #FF0000 !important; font-weight: 700; border-left: 4px solid #FF0000 !important; border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 8px !important; }
+    .nav-label { font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav-standard { font-size: 0.65rem; font-weight: 700; opacity: 0.6; white-space: nowrap; margin-left: 4px; }
     .result-card { border-left: 4px solid #FF0000; background-color: white; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .input-sidebar { background-color: #f8fafc; border-right: 1px solid #e2e8f0; }
     .metric-value { color: #FF0000; font-size: 1.5rem; font-weight: bold; }
@@ -225,6 +225,43 @@ class AppState:
         self.inc_i_sc = 2000.0
         self.inc_t_op = 0.5
 
+        # TMS Calculator Inputs
+        self.tms_i_meas = 2000.0
+        self.tms_i_pickup = 400.0
+        self.tms_t_op_req = 0.5
+        self.tms_curve_type = "IEC Normal Inverse"
+
+        # Outgoing Feeder Protections (Points 2 & 3)
+        self.ofp_u_nom = 10.5
+        self.ofp_i_kz_max = 2140.0
+        self.ofp_i_kz_min_sys = 5030.0
+        self.ofp_sum_i_nom_tr = 85.3
+        self.ofp_ct_primary = 100
+        self.ofp_ct_secondary = 5
+        self.ofp_k_n_to = 1.15
+        self.ofp_k_btn = 5.0
+        self.ofp_k_n_mtz = 1.15
+        self.ofp_k_szp = 1.2
+        self.ofp_k_v = 0.935
+        self.ofp_i_fuse_max = 50.0
+        self.ofp_i_nom_max_branch = 33.0
+        self.ofp_t_fuse = 0.3
+        self.ofp_delta_t = 0.5
+        self.ofp_k_ots_fuse = 1.3
+        self.ofp_manual_mtz_i = 500.0
+        self.ofp_use_manual_mtz = True
+
+        # Bus Coupler (СВ) Inputs
+        self.bc_i_rab_max = 600.0
+        self.bc_k_ots = 1.2
+        self.bc_k_szp = 1.5
+        self.bc_k_v = 0.935
+        self.bc_i_sz_max_downstream = 1200.0
+        self.bc_sum_i_rab_healthy = 400.0
+        self.bc_k_tok = 1.1
+        self.bc_ct_primary = 1000
+        self.bc_ct_secondary = 5
+
 state = AppState()
 
 # --- Utility Functions ---
@@ -258,11 +295,6 @@ def transformer_protection_page():
     with ui.row().classes('w-full no-wrap'):
         # Sidebar-like input panel
         with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
-            ui.label('METHODOLOGY').classes('text-xs font-bold text-slate-400 mb-2')
-            ui.select(["Methodic 1", "Methodic 2"], 
-                      value=state.t_method, 
-                      on_change=lambda e: (setattr(state, 't_method', e.value), content.refresh())).classes('w-full mb-4')
-
             ui.label('TIME MODE').classes('text-xs font-bold text-slate-400 mb-2')
             ui.select(["Defined Time", "Inverse Time (TMS)"], 
                       value=state.t_time_mode, 
@@ -279,14 +311,8 @@ def transformer_protection_page():
             ui.label('COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
             ui.number('K_v', value=state.t_k_v, step=0.01, on_change=lambda e: setattr(state, 't_k_v', e.value)).classes('w-full')
             ui.number('K_per', value=state.t_k_per, step=0.1, on_change=lambda e: setattr(state, 't_k_per', e.value)).classes('w-full')
-
-            if state.t_method == "Methodic 1":
-                ui.number('K_ots', value=state.t_k_ots, step=0.1, on_change=lambda e: setattr(state, 't_k_ots', e.value)).classes('w-full')
-                ui.number('K_szp', value=state.t_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_k_szp', e.value)).classes('w-full')
-            else:
-                ui.number('k_n (Load)', value=state.t_m2_k_n_load, step=0.1, on_change=lambda e: setattr(state, 't_m2_k_n_load', e.value)).classes('w-full')
-                ui.number('k_n (ATS)', value=state.t_m2_k_n_ats, step=0.1, on_change=lambda e: setattr(state, 't_m2_k_n_ats', e.value)).classes('w-full')
-                ui.number('k_szp (ATS)', value=state.t_m2_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_m2_k_szp', e.value)).classes('w-full')
+            ui.number('K_ots', value=state.t_k_ots, step=0.1, on_change=lambda e: setattr(state, 't_k_ots', e.value)).classes('w-full')
+            ui.number('K_szp', value=state.t_k_szp, step=0.1, on_change=lambda e: setattr(state, 't_k_szp', e.value)).classes('w-full')
             
             ui.label('SENSITIVITY').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
             ui.number('Min SC Current (A)', value=state.t_i_kz_min, step=50, on_change=lambda e: setattr(state, 't_i_kz_min', e.value)).classes('w-full')
@@ -311,18 +337,12 @@ def transformer_protection_page():
             ui.label('Transformer Protection Settings (ANSI 51)').classes('text-2xl font-bold text-slate-800 mb-6')
             
             if state.calc_triggered:
-                # Common Calculations
+                # Calculations (Standard Methodic)
                 i_nom = state.t_s_nom / (1.732 * state.t_u_nom)
                 i_rab_max = i_nom * state.t_k_per
                 
-                if state.t_method == "Methodic 1":
-                    i_szp = (state.t_k_ots * state.t_k_szp / state.t_k_v) * i_rab_max
-                    threshold = 1.5
-                else:
-                    i_szp1 = (state.t_m2_k_n_load / state.t_k_v) * i_rab_max
-                    i_szp2 = (state.t_m2_k_n_ats / state.t_k_v) * (i_rab_max) # Simplified
-                    i_szp = max(i_szp1, i_szp2)
-                    threshold = 1.2
+                i_szp = (state.t_k_ots * state.t_k_szp / state.t_k_v) * i_rab_max
+                threshold = 1.5
                 
                 set_value = i_szp / state.t_ct_primary
                 
@@ -378,29 +398,13 @@ def transformer_protection_page():
                                      f'{i_nom:.2f} &middot; K<sub>per</sub> = {i_nom:.2f} &middot; {state.t_k_per}',
                                      f'{i_rab_max:.2f}', 'A')
 
-                            if state.t_method == "Methodic 1":
-                                math_step('3. Protection Pickup Current',
-                                         'I<sub>szp</sub>',
-                                         frac(f'K<sub>ots</sub> &middot; K<sub>szp</sub>', 'K<sub>v</sub>') +
-                                         f' &middot; I<sub>rab.max</sub> = ' +
-                                         frac(f'{state.t_k_ots} &middot; {state.t_k_szp}', f'{state.t_k_v}') +
-                                         f' &middot; {i_rab_max:.2f}',
-                                         f'{i_szp:.2f}', 'A')
-                            else:
-                                math_step('3. Condition 1 (Load)',
-                                         'I<sub>szp(1)</sub>',
-                                         frac('k<sub>n</sub>', 'k<sub>v</sub>') + f' &middot; I<sub>rab.max</sub> = ' +
-                                         frac(f'{state.t_m2_k_n_load}', f'{state.t_k_v}') + f' &middot; {i_rab_max:.2f}',
-                                         f'{i_szp1:.2f}', 'A')
-                                math_step('4. Condition 2 (Self-start)',
-                                         'I<sub>szp(2)</sub>',
-                                         frac('k<sub>n</sub>', 'k<sub>v</sub>') + f' &middot; I<sub>rab.max</sub> = ' +
-                                         frac(f'{state.t_m2_k_n_ats}', f'{state.t_k_v}') + f' &middot; {i_rab_max:.2f}',
-                                         f'{i_szp2:.2f}', 'A')
-                                math_step('5. Final Pickup Current',
-                                         'I<sub>szp</sub>',
-                                         f'max({i_szp1:.2f}, {i_szp2:.2f})',
-                                         f'{i_szp:.2f}', 'A')
+                            math_step('3. Protection Pickup Current',
+                                     'I<sub>szp</sub>',
+                                     frac(f'K<sub>ots</sub> &middot; K<sub>szp</sub>', 'K<sub>v</sub>') +
+                                     f' &middot; I<sub>rab.max</sub> = ' +
+                                     frac(f'{state.t_k_ots} &middot; {state.t_k_szp}', f'{state.t_k_v}') +
+                                     f' &middot; {i_rab_max:.2f}',
+                                     f'{i_szp:.2f}', 'A')
 
                             math_step('Relay Start Value',
                                      'Start value',
@@ -422,8 +426,17 @@ def transformer_protection_page():
 
                     if tms_calc and state.t_time_mode == "Inverse Time (TMS)":
                         with ui.expansion('Time Delay Analysis', icon='timer').classes('w-full bg-white border'):
-                            ui.label(f'TMS = {tms_calc:.3f}').classes('font-bold')
-                            ui.label('Expected operation time at multiples of pickup:').classes('text-slate-600 mt-2')
+                            # Detailed TMS Calculation Step
+                            c_vals = CURVES[state.t_curve_type]
+                            m_ratio = state.t_i_sc / i_pickup_actual if i_pickup_actual > 0 else 1.0
+                            base_frac_t = frac(f'{c_vals["A"]}', f'{m_ratio:.2f}<sup>{c_vals["c"]}</sup> - 1')
+                            
+                            math_step('TMS Calculation',
+                                     'k',
+                                     frac(f'{state.t_t_op}', f'({base_frac_t} + {c_vals["B"]})'),
+                                     f'{tms_calc:.3f}')
+
+                            ui.label('Expected operation time at multiples of pickup:').classes('text-slate-600 mt-4 font-bold')
                             
                             def calc_time(m):
                                 c = CURVES[state.t_curve_type]
@@ -656,14 +669,14 @@ def cable_page():
                         with ui.column().classes('w-full p-4'):
                             math_step('1. Load Current', 
                                      'I', 
-                                     f'\\frac{{{state.c_p_load} \\cdot 1000}}{{\\sqrt{{3}} \\cdot {state.c_u_nom} \\cdot {state.c_cos_phi}}}', 
+                                     frac(f'{state.c_p_load} &middot; 1000', f'&radic;3 &middot; {state.c_u_nom} &middot; {state.c_cos_phi}'), 
                                      f'{i_load:.2f}', 'A')
                             
                             ui.label(f'Permissible Current (Iz): {CABLE_DATA[state.c_material]["iz"][selected_section]} A for {selected_section} mm²').classes('mb-4 text-slate-600')
 
                             math_step('2. Voltage Drop', 
-                                     '\\Delta U\\%', 
-                                     f'\\frac{{\\Delta U}}{{{state.c_u_nom}}} \\cdot 100', 
+                                     '&Delta;U%', 
+                                     frac('&Delta;U', f'{state.c_u_nom}') + ' &middot; 100', 
                                      f'{delta_u_pct:.2f}', '%')
                             
                             if delta_u_pct <= state.c_du_max:
@@ -757,13 +770,13 @@ def sc_generator_page():
                 with ui.expansion('Impedance Derivation', icon='hub').classes('w-full bg-white border mt-6'):
                     with ui.column().classes('w-full p-4'):
                         math_step('1. Generator Base Impedance', 
-                                 'Z_{base}', 
-                                 f'\\frac{{U_{{rG}}^2}}{{S_n}}', 
-                                 f'{z_base:.4f}', '\\Omega')
+                                 'Z<sub>base</sub>', 
+                                 frac(f'U<sub>rG</sub><sup>2</sup>', 'S<sub>n</sub>'), 
+                                 f'{z_base:.4f}', '&Omega;')
                         
                         math_step('2. Correction Factor', 
-                                 'K_G', 
-                                 f'\\frac{{U_n}}{{U_{{rG}}}} \\cdot \\frac{{C_{{max}}}}{{1 + x\"_d \\cdot \\sin\\phi_G}}', 
+                                 'K<sub>G</sub>', 
+                                 frac('U<sub>n</sub>', 'U<sub>rG</sub>') + ' &middot; ' + frac('C<sub>max</sub>', '1 + x&quot;<sub>d</sub> &middot; sin&phi;<sub>G</sub>'), 
                                  f'{K_G:.4f}')
                         
                         math_step('3. Corrected Reactance', 
@@ -772,8 +785,8 @@ def sc_generator_page():
                                  f'{x_GK:.4f}', '\\Omega')
                         
                         math_step('4. SC Current (3-phase)', 
-                                 'I\"_{k3}', 
-                                 '\\frac{C_{max} \\cdot U_{rG}}{\\sqrt{3} \\cdot Z_{GK}}', 
+                                 'I&quot;<sub>k3</sub>', 
+                                 frac('C<sub>max</sub> &middot; U<sub>rG</sub>', '&radic;3 &middot; Z<sub>GK</sub>'), 
                                  f'{ik3:.3f}', 'kA')
             else:
                 with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
@@ -886,6 +899,114 @@ def earthing_page():
                 with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
                     ui.icon('public', size='64px').classes('text-slate-300')
                     ui.label('Enter grid and soil data for safety analysis').classes('text-slate-400 mt-4')
+
+# --- Module: TMS Calculator ---
+def tms_calculator_page():
+    with ui.row().classes('w-full no-wrap'):
+        # Sidebar for inputs
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('CURRENT DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('Measured Current I (A)', value=state.tms_i_meas, on_change=lambda e: setattr(state, 'tms_i_meas', e.value)).classes('w-full')
+            ui.number('Start Value I> (A)', value=state.tms_i_pickup, on_change=lambda e: setattr(state, 'tms_i_pickup', e.value)).classes('w-full')
+            
+            ui.label('TIMING DATA').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Req. Operate Time t[s]', value=state.tms_t_op_req, step=0.01, on_change=lambda e: setattr(state, 'tms_t_op_req', e.value)).classes('w-full')
+            
+            ui.label('CURVE SELECTION').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.select(list(CURVES.keys()), label='Curve Type', value=state.tms_curve_type, on_change=lambda e: (setattr(state, 'tms_curve_type', e.value), content.refresh())).classes('w-full')
+            
+            ui.button('CALCULATE TMS', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        # Main content area
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('TMS (Time Multiplier Setting) Calculator').classes('text-2xl font-bold text-slate-800 mb-2')
+            
+            # Variable Legend Card
+            with ui.card().classes('w-full bg-slate-50 border-none shadow-none mb-6 p-4'):
+                with ui.row().classes('w-full justify-around'):
+                    with ui.column().classes('items-center'):
+                        ui.label('t[s]').classes('font-bold text-red-600')
+                        ui.label('Operate time').classes('text-xs text-slate-500')
+                    with ui.column().classes('items-center'):
+                        ui.label('I').classes('font-bold text-red-600')
+                        ui.label('Measured current').classes('text-xs text-slate-500')
+                    with ui.column().classes('items-center'):
+                        ui.label('I >').classes('font-bold text-red-600')
+                        ui.label('Set Start value').classes('text-xs text-slate-500')
+                    with ui.column().classes('items-center'):
+                        ui.label('k').classes('font-bold text-red-600')
+                        ui.label('Time multiplier').classes('text-xs text-slate-500')
+
+            if state.calc_triggered:
+                # Formula Logic
+                c_vals = CURVES[state.tms_curve_type]
+                A, B, c_coef = c_vals["A"], c_vals["B"], c_vals["c"]
+                
+                i_rel = state.tms_i_meas / state.tms_i_pickup if state.tms_i_pickup > 0 else 1.0
+                
+                if i_rel > 1.0:
+                    denominator = (A / ((i_rel ** c_coef) - 1)) + B
+                    calculated_k = state.tms_t_op_req / denominator
+                else:
+                    calculated_k = 0.0
+
+                with ui.column().classes('w-full gap-4'):
+                    # Metrics Row
+                    with ui.row().classes('w-full justify-between gap-4'):
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Calculated TMS (k)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{calculated_k:.4f}').classes('metric-value text-red-600')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Relay Multiplier (I/I>)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_rel:.2f}').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Curve Constants').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'A={A}, B={B}, c={c_coef}').classes('text-sm font-medium mt-2')
+
+                    # Detailed Steps
+                    with ui.expansion('Step-by-Step Calculation', icon='calculate').classes('w-full bg-white border').props('value=True'):
+                        with ui.column().classes('w-full p-4'):
+                            # Step 1: Ratio
+                            math_step('1. Relay Current Multiplier',
+                                     'M = I / I&gt;',
+                                     frac(f'{state.tms_i_meas}', f'{state.tms_i_pickup}'),
+                                     f'{i_rel:.3f}')
+
+                            # Step 2: Base Formula
+                            base_frac = frac('A', f'M<sup>c</sup> - 1')
+                            math_step('2. Base IDMT Formula',
+                                     't[s]',
+                                     f'({base_frac} + B) &middot; k',
+                                     '...')
+
+                            # Step 3: Solve for k
+                            solve_frac = frac('t[s]', f'({base_frac} + B)')
+                            math_step('3. Solving for Time Multiplier (k)',
+                                     'k',
+                                     solve_frac.replace('t[s]', f'{state.tms_t_op_req}').replace('A', f'{A}').replace('B', f'{B}').replace('M', f'{i_rel:.3f}').replace('c', f'{c_coef}'),
+                                     f'{calculated_k:.4f}')
+
+                            if i_rel <= 1.0:
+                                ui.label('⚠️ Note: Measured current is below pickup. Timing is undefined.').classes('text-orange-600 font-bold mt-2')
+
+                    with ui.expansion('Time Delay Analysis', icon='timer').classes('w-full bg-white border'):
+                        ui.label(f'Calculated TMS = {calculated_k:.4f}').classes('font-bold')
+                        ui.label('Expected operation time at multiples of pickup:').classes('text-slate-600 mt-2')
+                        
+                        def calc_time(m):
+                            if m <= 1: return None
+                            return (A / (m**c_coef - 1) + B) * calculated_k
+                        
+                        with ui.row().classes('w-full gap-4 mt-2'):
+                            for mult in [3, 5, 8]:
+                                t_res = calc_time(mult)
+                                with ui.column().classes('items-center border p-2 rounded w-24'):
+                                    ui.label(f'{mult}x').classes('text-xs font-bold')
+                                    ui.label(f'{t_res:.2f}s' if t_res else 'N/A').classes('text-red-600')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('calculate', size='64px').classes('text-slate-300')
+                    ui.label('Enter data and click Calculate to determine required TMS').classes('text-slate-400 mt-4')
 
 # --- Module: Incomer Protection (ANSI 67) ---
 def incomer_protection_page():
@@ -1033,9 +1154,14 @@ def incomer_protection_page():
 
                             if state.inc_time_mode == "Inverse Time (TMS)":
                                 if tms_inc:
-                                    math_step('5. Time Multiplier Setting',
-                                             'TMS',
-                                             frac('t<sub>op</sub>', f'(A / ((I<sub>sc</sub>/I<sub>pickup</sub>)<sup>c</sup> - 1)) + B'),
+                                    # Detailed TMS Calculation Step
+                                    c_vals = CURVES[state.inc_curve_type]
+                                    m_ratio = state.inc_i_sc / i_sz_bb if i_sz_bb > 0 else 1.0
+                                    base_frac_inc = frac(f'{c_vals["A"]}', f'{m_ratio:.2f}<sup>{c_vals["c"]}</sup> - 1')
+                                    
+                                    math_step('TMS Calculation',
+                                             'k',
+                                             frac(f'{state.inc_t_op}', f'({base_frac_inc} + {c_vals["B"]})'),
                                              f'{tms_inc:.3f}')
                             else:
                                 math_step(f'4. Time Delay',
@@ -1062,6 +1188,272 @@ def incomer_protection_page():
                     ui.label('Enter load and coordination data then click Calculate').classes('text-slate-400 mt-4')
 
 
+# --- Module: Outgoing Feeder Protections (Points 2 & 3) ---
+def outgoing_feeder_protections_page():
+    with ui.row().classes('w-full no-wrap'):
+        # Sidebar for inputs
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('SYSTEM DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('U_nom (kV)', value=state.ofp_u_nom, on_change=lambda e: setattr(state, 'ofp_u_nom', e.value)).classes('w-full')
+            ui.number('Max Ikz at End (A)', value=state.ofp_i_kz_max, on_change=lambda e: setattr(state, 'ofp_i_kz_max', e.value)).classes('w-full')
+            ui.number('Min Ikz Sys (A)', value=state.ofp_i_kz_min_sys, on_change=lambda e: setattr(state, 'ofp_i_kz_min_sys', e.value)).classes('w-full')
+            ui.number('Sum I_nom Transformers (A)', value=state.ofp_sum_i_nom_tr, on_change=lambda e: setattr(state, 'ofp_sum_i_nom_tr', e.value)).classes('w-full')
+            
+            ui.label('CT PARAMETERS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('CT Primary (A)', value=state.ofp_ct_primary, on_change=lambda e: setattr(state, 'ofp_ct_primary', e.value)).classes('w-full')
+            ui.select([5, 1], label='CT Secondary (A)', value=state.ofp_ct_secondary, on_change=lambda e: setattr(state, 'ofp_ct_secondary', e.value)).classes('w-full')
+
+            ui.label('MAGNETIC TRIP (MTO)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('K_n.mto', value=state.ofp_k_n_to, step=0.01, on_change=lambda e: setattr(state, 'ofp_k_n_to', e.value)).classes('w-full')
+            ui.number('K_btn', value=state.ofp_k_btn, step=0.1, on_change=lambda e: setattr(state, 'ofp_k_btn', e.value)).classes('w-full')
+
+            ui.label('MAX CURRENT (MTZ)').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('K_n.mtz', value=state.ofp_k_n_mtz, step=0.01, on_change=lambda e: setattr(state, 'ofp_k_n_mtz', e.value)).classes('w-full')
+            ui.number('K_szp', value=state.ofp_k_szp, step=0.1, on_change=lambda e: setattr(state, 'ofp_k_szp', e.value)).classes('w-full')
+            ui.number('K_v', value=state.ofp_k_v, step=0.005, on_change=lambda e: setattr(state, 'ofp_k_v', e.value)).classes('w-full')
+            
+            ui.label('FUSE COORDINATION').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Max Fuse Rating (A)', value=state.ofp_i_fuse_max, on_change=lambda e: setattr(state, 'ofp_i_fuse_max', e.value)).classes('w-full')
+            ui.number('I_nom Max Branch (A)', value=state.ofp_i_nom_max_branch, on_change=lambda e: setattr(state, 'ofp_i_nom_max_branch', e.value)).classes('w-full')
+            ui.number('t_fuse (s)', value=state.ofp_t_fuse, step=0.05, on_change=lambda e: setattr(state, 'ofp_t_fuse', e.value)).classes('w-full')
+            ui.number('Delta t (s)', value=state.ofp_delta_t, step=0.05, on_change=lambda e: setattr(state, 'ofp_delta_t', e.value)).classes('w-full')
+            ui.number('K_ots.fuse', value=state.ofp_k_ots_fuse, step=0.1, on_change=lambda e: setattr(state, 'ofp_k_ots_fuse', e.value)).classes('w-full')
+
+            ui.checkbox('Manual MTZ Increase', value=state.ofp_use_manual_mtz, on_change=lambda e: setattr(state, 'ofp_use_manual_mtz', e.value)).classes('mt-4')
+            if state.ofp_use_manual_mtz:
+                ui.number('Target MTZ (A)', value=state.ofp_manual_mtz_i, step=10, on_change=lambda e: setattr(state, 'ofp_manual_mtz_i', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        # Main content area
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Outgoing Feeder Protections').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                # 1. Current Cut-off (MTO)
+                i_mto_set1 = state.ofp_k_n_to * state.ofp_i_kz_max
+                i_mto_set2 = state.ofp_k_btn * state.ofp_sum_i_nom_tr
+                i_mto_set = max(i_mto_set1, i_mto_set2)
+                
+                i_mto_sec = i_mto_set / (state.ofp_ct_primary / state.ofp_ct_secondary)
+                k_ch_mto = (0.866 * state.ofp_i_kz_min_sys) / i_mto_set
+                
+                # 2. Max Current Protection (MTZ)
+                i_mtz_set1 = (state.ofp_k_n_mtz * state.ofp_k_szp / state.ofp_k_v) * state.ofp_sum_i_nom_tr
+                # Coordination with fuses
+                i_mtz_set2 = state.ofp_k_ots_fuse * (2 * state.ofp_i_fuse_max + (state.ofp_sum_i_nom_tr - state.ofp_i_nom_max_branch))
+                
+                i_mtz_calc = max(i_mtz_set1, i_mtz_set2)
+                
+                if state.ofp_use_manual_mtz:
+                    i_mtz_final = max(i_mtz_calc, state.ofp_manual_mtz_i)
+                else:
+                    i_mtz_final = i_mtz_calc
+                
+                t_mtz_final = state.ofp_t_fuse + state.ofp_delta_t
+                k_ch_mtz = (0.866 * state.ofp_i_kz_min_sys) / i_mtz_final
+                
+                with ui.column().classes('w-full gap-4'):
+                    # Segregated Result Cards
+                    with ui.row().classes('w-full gap-4'):
+                        # MTO Results Card
+                        with ui.card().classes('flex-grow border-t-4 border-blue-500 shadow-md p-4'):
+                            ui.label('CURRENT CUT-OFF (MTO)').classes('text-sm font-bold text-blue-600 mb-2')
+                            with ui.row().classes('w-full justify-between items-center'):
+                                with ui.column():
+                                    ui.label('Pickup Current').classes('text-xs text-slate-400')
+                                    ui.label(f'{i_mto_set:.1f} A').classes('text-xl font-bold')
+                                with ui.column().classes('items-end'):
+                                    ui.label('Sensitivity Ks').classes('text-xs text-slate-400')
+                                    ui.label(f'{k_ch_mto:.2f}').classes('text-xl font-bold ' + ('text-green-600' if k_ch_mto >= 1.5 else 'text-red-600'))
+
+                        # MTZ Results Card
+                        with ui.card().classes('flex-grow border-t-4 border-red-500 shadow-md p-4'):
+                            ui.label('MAX CURRENT (MTZ)').classes('text-sm font-bold text-red-600 mb-2')
+                            with ui.row().classes('w-full justify-between items-center'):
+                                with ui.column():
+                                    ui.label('Pickup Current').classes('text-xs text-slate-400')
+                                    ui.label(f'{i_mtz_final:.1f} A').classes('text-xl font-bold')
+                                with ui.column():
+                                    ui.label('Time Delay').classes('text-xs text-slate-400')
+                                    ui.label(f'{t_mtz_final:.2f} s').classes('text-xl font-bold')
+                                with ui.column().classes('items-end'):
+                                    ui.label('Sensitivity Ks').classes('text-xs text-slate-400')
+                                    ui.label(f'{k_ch_mtz:.2f}').classes('text-xl font-bold ' + ('text-green-600' if k_ch_mtz >= 1.2 else 'text-red-600'))
+
+                    # Point 2: MTO Calculation
+                    with ui.expansion('2. Current Cut-off (MTO) Calculation', icon='bolt').classes('w-full bg-white border').props('value=True'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('2.1. Offset from Max SC',
+                                     'I<sub>mto.set.1</sub>',
+                                     f'k<sub>n</sub> &middot; I<sub>kz.max</sub> = {state.ofp_k_n_to} &middot; {state.ofp_i_kz_max}',
+                                     f'{i_mto_set1:.1f}', 'A')
+                            
+                            math_step('2.2. Offset from Inrush Current',
+                                     'I<sub>mto.set.2</sub>',
+                                     f'k<sub>btn</sub> &middot; &sum;I<sub>nom.tr</sub> = {state.ofp_k_btn} &middot; {state.ofp_sum_i_nom_tr}',
+                                     f'{i_mto_set2:.1f}', 'A')
+                            
+                            math_step('Final MTO Pickup',
+                                     'I<sub>mto.set</sub>',
+                                     f'max({i_mto_set1:.1f}, {i_mto_set2:.1f})',
+                                     f'{i_mto_set:.1f}', 'A')
+                            
+                            math_step('Secondary Setting',
+                                     'I<sub>mto.relay</sub>',
+                                     frac('I<sub>mto.set</sub>', 'n<sub>T</sub>') + f' = ' + frac(f'{i_mto_set:.1f}', f'{state.ofp_ct_primary}/{state.ofp_ct_secondary}'),
+                                     f'{i_mto_sec:.2f}', 'A')
+                            
+                            math_step('Sensitivity Check',
+                                     'k<sub>ch.mto</sub>',
+                                     frac('0.866 &middot; I<sub>kz.min.sys</sub>', 'I<sub>mto.set</sub>') + f' = ' + frac(f'0.866 &middot; {state.ofp_i_kz_min_sys}', f'{i_mto_set:.1f}'),
+                                     f'{k_ch_mto:.2f}')
+                            
+                            if k_ch_mto >= 1.5:
+                                ui.label('✅ Sensitivity compliant (Ks ≥ 1.5)').classes('text-green-600 font-bold')
+                            else:
+                                ui.label('❌ Sensitivity insufficient (Ks < 1.5)').classes('text-red-600 font-bold')
+
+                    # Point 3: MTZ Calculation
+                    with ui.expansion('3. Max Current Protection (MTZ) Calculation', icon='schedule').classes('w-full bg-white border').props('value=True'):
+                        with ui.column().classes('w-full p-4'):
+                            math_step('3.1. Offset from Self-start',
+                                     'I<sub>mtz.set.1</sub>',
+                                     frac('k<sub>n</sub> &middot; k<sub>szp</sub>', 'k<sub>v</sub>') + f' &middot; &sum;I<sub>nom.tr</sub> = ' +
+                                     frac(f'{state.ofp_k_n_mtz} &middot; {state.ofp_k_szp}', f'{state.ofp_k_v}') + f' &middot; {state.ofp_sum_i_nom_tr}',
+                                     f'{i_mtz_set1:.1f}', 'A')
+                            
+                            math_step('3.5. Offset from Fuses',
+                                     'I<sub>mtz.set.2</sub>',
+                                     f'k<sub>ots</sub> &middot; (2 &middot; I<sub>fuse.max</sub> + &sum;I<sub>nom.others</sub>) = ' +
+                                     f'{state.ofp_k_ots_fuse} &middot; (2 &middot; {state.ofp_i_fuse_max} + {state.ofp_sum_i_nom_tr - state.ofp_i_nom_max_branch:.1f})',
+                                     f'{i_mtz_set2:.1f}', 'A')
+                            
+                            math_step('Preliminary MTZ Pickup',
+                                     'I<sub>mtz.calc</sub>',
+                                     f'max({i_mtz_set1:.1f}, {i_mtz_set2:.1f})',
+                                     f'{i_mtz_calc:.1f}', 'A')
+                            
+                            if state.ofp_use_manual_mtz:
+                                math_step('Final MTZ Pickup (Increased)',
+                                         'I<sub>mtz.final</sub>',
+                                         f'max({i_mtz_calc:.1f}, {state.ofp_manual_mtz_i})',
+                                         f'{i_mtz_final:.1f}', 'A')
+                            
+                            math_step('3.6. Time Delay',
+                                     't<sub>mtz.set</sub>',
+                                     f't<sub>fuse</sub> + &Delta;t = {state.ofp_t_fuse} + {state.ofp_delta_t}',
+                                     f'{t_mtz_final:.2f}', 's')
+                            
+                            math_step('Sensitivity Check',
+                                     'k<sub>ch.mtz</sub>',
+                                     frac('0.866 &middot; I<sub>kz.min.sys</sub>', 'I<sub>mtz.final</sub>') + f' = ' + frac(f'0.866 &middot; {state.ofp_i_kz_min_sys}', f'{i_mtz_final:.1f}'),
+                                     f'{k_ch_mtz:.2f}')
+
+                            if k_ch_mtz >= 1.2:
+                                ui.label('✅ Sensitivity compliant (Ks ≥ 1.2)').classes('text-green-600 font-bold')
+                            else:
+                                ui.label('❌ Sensitivity insufficient (Ks < 1.2)').classes('text-red-600 font-bold')
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('hub', size='64px').classes('text-slate-300')
+                    ui.label('Enter feeder data and click Calculate to see results').classes('text-slate-400 mt-4')
+
+def bus_coupler_page():
+    with ui.row().classes('w-full no-wrap'):
+        # Sidebar-like input panel
+        with ui.column().classes('w-80 p-4 input-sidebar min-h-screen'):
+            ui.label('LOAD DATA').classes('text-xs font-bold text-slate-400 mb-2')
+            ui.number('I_rab.max (A)', value=state.bc_i_rab_max, on_change=lambda e: setattr(state, 'bc_i_rab_max', e.value)).classes('w-full')
+            
+            ui.label('COEFFICIENTS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('K_ots', value=state.bc_k_ots, step=0.1, on_change=lambda e: setattr(state, 'bc_k_ots', e.value)).classes('w-full')
+            ui.number('K_szp', value=state.bc_k_szp, step=0.1, on_change=lambda e: setattr(state, 'bc_k_szp', e.value)).classes('w-full')
+            ui.number('K_v', value=state.bc_k_v, step=0.01, on_change=lambda e: setattr(state, 'bc_k_v', e.value)).classes('w-full')
+            
+            ui.label('SELECTIVITY DATA').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('Max I_sz Downstream (A)', value=state.bc_i_sz_max_downstream, on_change=lambda e: setattr(state, 'bc_i_sz_max_downstream', e.value)).classes('w-full')
+            ui.number('Sum I_rab Healthy (A)', value=state.bc_sum_i_rab_healthy, on_change=lambda e: setattr(state, 'bc_sum_i_rab_healthy', e.value)).classes('w-full')
+            ui.number('K_tok', value=state.bc_k_tok, step=0.1, on_change=lambda e: setattr(state, 'bc_k_tok', e.value)).classes('w-full')
+            
+            ui.label('CT PARAMETERS').classes('text-xs font-bold text-slate-400 mt-4 mb-2')
+            ui.number('CT Primary (A)', value=state.bc_ct_primary, on_change=lambda e: setattr(state, 'bc_ct_primary', e.value)).classes('w-full')
+            ui.select([5, 1], label='CT Secondary', value=state.bc_ct_secondary, on_change=lambda e: setattr(state, 'bc_ct_secondary', e.value)).classes('w-full')
+
+            ui.button('CALCULATE', on_click=trigger_calc).classes('w-full mt-6 bg-red-600 text-white font-bold')
+
+        # Main content area
+        with ui.column().classes('flex-grow p-8'):
+            ui.label('Bus Coupler Protection (ANSI 51)').classes('text-2xl font-bold text-slate-800 mb-6')
+            
+            if state.calc_triggered:
+                # Step 1: Self-start coordination
+                i_sz1 = (state.bc_k_ots / state.bc_k_v) * state.bc_k_szp * state.bc_i_rab_max
+                
+                # Step 2: Selectivity coordination
+                i_sz2 = (state.bc_k_ots / state.bc_k_tok) * (state.bc_i_sz_max_downstream + state.bc_sum_i_rab_healthy)
+                
+                # Final Pickup
+                i_sz_final = max(i_sz1, i_sz2)
+                relay_setting = i_sz_final / state.bc_ct_primary
+
+                with ui.column().classes('w-full gap-4'):
+                    # Results Summary Metrics
+                    with ui.row().classes('w-full justify-between gap-4'):
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Step 1 (Self-start)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_sz1:.1f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Step 2 (Selectivity)').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_sz2:.1f} A').classes('metric-value')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Final Pickup I_sz').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{i_sz_final:.1f} A').classes('metric-value').style('color: #DC2626')
+                        with ui.card().classes('flex-grow result-card'):
+                            ui.label('Relay Setting').classes('text-xs font-bold text-slate-400')
+                            ui.label(f'{relay_setting:.3f} x In').classes('metric-value')
+
+                    # Detailed Steps
+                    with ui.expansion('Detailed Calculation Methodology', icon='calculate').classes('w-full bg-white border').props('value=True'):
+                        with ui.column().classes('w-full p-6 gap-6'):
+                            # Step 1
+                            with ui.column().classes('w-full'):
+                                ui.label('Step 1. Outstrip from self-start current (Load mode)').classes('text-lg font-bold text-slate-800')
+                                ui.markdown('*Essence*: Protection must not trip during simultaneous motor startup (e.g., during ATS).').classes('text-slate-600 italic mb-2')
+                                math_step('Condition 1 (Startup)',
+                                         'I<sub>sz.1</sub>',
+                                         frac('K<sub>ots</sub> &middot; K<sub>szp</sub>', 'K<sub>v</sub>') + f' &middot; I<sub>rab.max</sub> = ' +
+                                         frac(f'{state.bc_k_ots} &middot; {state.bc_k_szp}', f'{state.bc_k_v}') + f' &middot; {state.bc_i_rab_max}',
+                                         f'{i_sz1:.1f}', 'A')
+                            
+                            ui.separator()
+
+                            # Step 2
+                            with ui.column().classes('w-full'):
+                                ui.label('Step 2. Current coordination (Selectivity)').classes('text-lg font-bold text-slate-800')
+                                ui.markdown('*Essence*: Downstream protection must trip first. The BC "waits", accounting for both SC and healthy load currents.').classes('text-slate-600 italic mb-2')
+                                math_step('Condition 2 (Selectivity)',
+                                         'I<sub>sz.2</sub>',
+                                         frac('K<sub>ots</sub>', 'K<sub>tok</sub>') + f' &middot; (I<sub>sz.max.down</sub> + &Sigma;I<sub>rab.healthy</sub>) = ' +
+                                         frac(f'{state.bc_k_ots}', f'{state.bc_k_tok}') + f' &middot; ({state.bc_i_sz_max_downstream} + {state.bc_sum_i_rab_healthy})',
+                                         f'{i_sz2:.1f}', 'A')
+
+                            ui.separator()
+
+                            # Final Comparison
+                            with ui.column().classes('w-full'):
+                                ui.label('Step 3. Final Pickup Current Selection').classes('text-lg font-bold text-slate-800')
+                                math_step('Final Selection',
+                                         'I<sub>sz.final</sub>',
+                                         f'max(I<sub>sz.1</sub>, I<sub>sz.2</sub>) = max({i_sz1:.1f}, {i_sz2:.1f})',
+                                         f'{i_sz_final:.1f}', 'A')
+
+            else:
+                with ui.column().classes('w-full items-center justify-center p-20 border-2 border-dashed rounded-xl'):
+                    ui.icon('settings_input_component', size='64px').classes('text-slate-300')
+                    ui.label('Enter Bus Coupler data and click Calculate to see results').classes('text-slate-400 mt-4')
+
+
 # --- Main Layout ---
 @ui.refreshable
 def content():
@@ -1079,6 +1471,12 @@ def content():
         earthing_page()
     elif state.current_tool == "incomer":
         incomer_protection_page()
+    elif state.current_tool == "tms_calc":
+        tms_calculator_page()
+    elif state.current_tool == "outgoing_feeder":
+        outgoing_feeder_protections_page()
+    elif state.current_tool == "bus_coupler":
+        bus_coupler_page()
 
     else:
         with ui.column().classes('w-full items-center p-20'):
@@ -1099,33 +1497,43 @@ with ui.left_drawer(value=True, bordered=True).classes('bg-white w-72') as left_
     ui.separator()
     ui.label('PROTECTION MODULES').classes('text-[10px] font-bold text-slate-400 p-4 pb-0 tracking-widest')
     
+    # Constant list of modules for the sidebar
+    MODULE_LIST = [
+        ("transformer", "Transformer", "ANSI 51", "transformer"),
+        ("generator", "Generator", "ANSI 67", "power"),
+        ("selectivity", "Selectivity", "ANALYSIS", "analytics"),
+        ("cable", "Cable Sizing", "IEC / BS", "electrical_services"),
+        ("sc_generator", "SC Current", "IEC 60909", "settings_input_component"),
+        ("earthing", "Earthing", "IEEE 80", "public"),
+        ("incomer", "Incomer", "ANSI 67", "vpn_key"),
+        ("outgoing_feeder", "Outgoing Feeder", "ANSI 50/51", "hub"),
+        ("bus_coupler", "Bus Coupler", "ANSI 51", "sync_alt"),
+        ("tms_calc", "TMS", "CALCULATOR", "timer")
+    ]
+
     def set_tool(tool_id):
         state.current_tool = tool_id
         reset_calc()
+        sidebar_menu.refresh()
 
-    modules = [
-        ("transformer", "Transformer", "(ANSI 51)", "transformer"),
-        ("generator", "Generator", "(ANSI 67)", "power"),
-        ("selectivity", "Selectivity", "ANALYSIS", "analytics"),
-        ("cable", "Cable Sizing", "IEC/BS", "electrical_services"),
-        ("sc_generator", "SC Generator", "(IEC 60909)", "settings_input_component"),
-        ("earthing", "Earthing", "(IEEE 80)", "public"),
-        ("incomer", "Incomer", "(ANSI 67)", "vpn_key")
-    ]
+    @ui.refreshable
+    def sidebar_menu():
+        for tool_id, name, standard, icon in MODULE_LIST:
+            is_active = state.current_tool == tool_id
+            active_class = 'nav-button-active' if is_active else 'text-slate-600'
+            
+            with ui.button(on_click=lambda t=tool_id: set_tool(t)) \
+                .props('flat') \
+                .classes(f'nav-button px-4 {active_class}'):
+                with ui.row().classes('w-full items-center justify-between no-wrap'):
+                    with ui.row().classes('items-center gap-3 no-wrap'):
+                        ui.icon(icon, size='20px')
+                        ui.label(name).classes('nav-label')
+                    ui.label(standard).classes('nav-standard')
     
-    for tool_id, name, standard, icon in modules:
-        is_active = state.current_tool == tool_id
-        with ui.button(on_click=lambda t=tool_id: set_tool(t)) \
-            .props('flat') \
-            .classes('nav-button px-4') \
-            .classes('nav-button-active' if is_active else 'text-slate-600'):
-            with ui.row().classes('w-full items-center justify-between no-wrap'):
-                with ui.row().classes('items-center gap-3 no-wrap'):
-                    ui.icon(icon, size='20px')
-                    ui.label(name).classes('nav-label')
-                ui.label(standard).classes('nav-standard')
+    sidebar_menu()
 
 
 content()
 
-ui.run(title='Engineering Tool', port=8080, dark=False)
+ui.run(title='Engineering Tool', port=8080, dark=False, on_air=True)
